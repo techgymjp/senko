@@ -175,14 +175,16 @@ scene.add(sky);
 
 // 月
 const moonTex = canvasTex(256, 256, (c, w) => {
-  const g = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
-  g.addColorStop(0, 'rgba(240,230,190,0.35)'); g.addColorStop(0.3, 'rgba(240,230,190,0.1)'); g.addColorStop(1, 'rgba(240,230,190,0)');
-  c.fillStyle = g; c.fillRect(0, 0, w, w);
-  c.save();
-  c.fillStyle = '#f2e8c4'; c.beginPath(); c.arc(w / 2, w / 2, 22, 0, Math.PI * 2); c.fill();
-  c.globalCompositeOperation = 'destination-out';
-  c.beginPath(); c.arc(w / 2 + 10, w / 2 - 6, 20, 0, Math.PI * 2); c.fill();
-  c.restore();
+  // 三日月の形を別のキャンバスに作る（丸から、ずらした丸を切り取る）
+  const cr = document.createElement('canvas'); cr.width = cr.height = w;
+  const m = cr.getContext('2d');
+  m.fillStyle = '#f2e8c4'; m.beginPath(); m.arc(w / 2, w / 2, 22, 0, Math.PI * 2); m.fill();
+  m.globalCompositeOperation = 'destination-out';
+  m.beginPath(); m.arc(w / 2 + 11, w / 2 - 7, 20, 0, Math.PI * 2); m.fill();
+  // にじみは三日月をぼかして重ねる（光の輪が三日月の形に沿うので、影の丸が浮かない）
+  c.save(); c.globalAlpha = 0.5; c.filter = 'blur(18px)'; c.drawImage(cr, 0, 0); c.restore();
+  c.save(); c.globalAlpha = 0.6; c.filter = 'blur(6px)'; c.drawImage(cr, 0, 0); c.restore();
+  c.drawImage(cr, 0, 0);
 });
 const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: moonTex, fog: false, depthWrite: false, transparent: true }));
 moon.scale.set(9, 9, 1);
@@ -362,8 +364,9 @@ let W = 1, H = 1, DPR = 1;
 let maxSlots = 3;
 const slots = [];
 const ZJ = [0, -0.16, -0.06, -0.22, -0.1, -0.28];
-const ZJ_PORTRAIT = [0, -0.34, -0.12, -0.46, -0.22];  // 縦長：前後に大きくずらして重なりを避ける
+const ZJ_PORTRAIT = [0, -0.14, -0.05, -0.19, -0.09];  // 縦長：前後に少しずらして重なりを避ける
 let sparkZ = -0.2, portrait = false;
+let VIS = 1, SPK = 1;  // 縦画面では火玉と火花を大きく見せる（見た目の倍率）
 const _v = new THREE.Vector3();
 
 function rayAt(ndcX, ndcY, z) {  // 視錐台と平面 z の交点
@@ -391,11 +394,11 @@ function layout() {
   camera.aspect = aspect;
   portrait = aspect < 0.9;
   if (portrait) {
-    // 縦長：横の画角を保ったまま縦に広く見せ、火玉は上・着地点は下・縁側は最下部に少しだけ
-    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(24)) / aspect));
+    // 縦長：カメラを線香花火に寄せる。火玉は画面の上 3〜4 割、着地点は下 2 割、縁側は最下部に少しだけ
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(20)) / aspect));
     camera.updateProjectionMatrix();
-    sparkZ = -0.35;
-    const camZ = 2.1;
+    sparkZ = -0.3;
+    const camZ = 1.3;
     const edge = new THREE.Vector3(), land = new THREE.Vector3();
     let bestE = 1e9, bestY = 1, bestP = -0.3;
     for (let cy = 0.6; cy <= 2.2; cy += 0.04) {
@@ -405,7 +408,7 @@ function layout() {
         camera.updateMatrixWorld(true);
         edge.set(0, FLOOR_Y, EDGE_Z).project(camera);
         land.set(0, 0, sparkZ).project(camera);
-        const e = (edge.y + 0.88) ** 2 + (land.y + 0.72) ** 2;
+        const e = (edge.y + 0.9) ** 2 + (land.y + 0.62) ** 2;
         if (e < bestE && land.y > edge.y) { bestE = e; bestY = cy; bestP = pd; }
       }
     }
@@ -423,6 +426,7 @@ function layout() {
   }
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
+  VIS = portrait ? 1.9 : 1; SPK = portrait ? 1.25 : 1;
 
   const halfW = Math.abs(rayAt(1, 0, sparkZ).x);
   const n = portrait ? clamp(Math.floor(W / 76), 4, 5) : clamp(Math.min(Math.floor(W / 105), Math.floor(halfW * 2 * 0.82 / 0.26)), 3, 6);
@@ -437,15 +441,16 @@ function layout() {
     // 火玉の高さの範囲（縦長では画面の上の方に）
     if (portrait) {  // 隣どうしで火玉の高さを上下にずらす
       const hi = s.i % 2 === 0;
-      s.yLo = rayAt(0, hi ? 0.6 : 0.4, s.z).y; s.yHi = rayAt(0, hi ? 0.78 : 0.56, s.z).y;
+      s.yLo = rayAt(0, hi ? 0.26 : 0.1, s.z).y; s.yHi = rayAt(0, hi ? 0.42 : 0.26, s.z).y;
     }
     else { s.yLo = s.top * 0.5; s.yHi = s.top * 0.66; }
   }
 
   // 小道具の位置
-  const fz = portrait ? EDGE_Z + Math.max(0.07, (floorZ(-0.98) - EDGE_Z) * 0.5) : EDGE_Z + 0.22;
+  const fz = portrait ? EDGE_Z + 0.06 : EDGE_Z + 0.22;
   const fhw = Math.abs(rayAt(1, -0.85, fz).x);
   coil.position.set(-Math.min(fhw * 0.62, 1.2), FLOOR_Y, fz);
+  coil.visible = !portrait;  // 縦画面ではカメラのすぐ手前になり大きく切れて映るので出さない
   bucket.position.set(Math.min(Math.abs(rayAt(1, 0, 0.05).x) * 0.78, 1.4), 0, 0.05);
   for (const [i, p] of pillars.entries()) p.position.x = (i ? 1 : -1) * Math.max(1.5, fhw * 1.02);
 }
@@ -761,7 +766,7 @@ function spawn(kind, x, y, z, opt) {
   randDir(_d);
   if (opt && opt.up) { _d.y = Math.abs(_d.y) * 1.5 + 0.4; }
   if (opt && opt.r) { x += _d.x * opt.r; y += _d.y * opt.r; z += _d.z * opt.r; }
-  const sp = rand(k.sp[0], k.sp[1]) * ((opt && opt.spMul) || 1);
+  const sp = rand(k.sp[0], k.sp[1]) * ((opt && opt.spMul) || 1) * SPK;
   const life = rand(k.life[0], k.life[1]);
   let br = 0;
   if (opt && opt.br !== undefined) br = opt.br;
@@ -971,7 +976,7 @@ class Senko {
     this.acc[kind] = (this.acc[kind] || 0) + rate * dt;
     while (this.acc[kind] >= 1) {
       this.acc[kind] -= 1;
-      spawn(kind, this.pos.x, this.pos.y, this.pos.z, Object.assign({ r: this.r * 1.05 }, opt));
+      spawn(kind, this.pos.x, this.pos.y, this.pos.z, Object.assign({ r: this.r * 1.05 * VIS }, opt));
     }
   }
   // 各段階の火花の出方。k は段階内の進み具合 (0〜1)
@@ -1033,7 +1038,7 @@ class Senko {
         if (this.burstT <= 0) {
           this.burstT = rand(0.14, 0.32) / mix.burst;
           const n = 9 + Math.floor(Math.random() * 8);
-          for (let i = 0; i < n; i++) spawn('botan', this.pos.x, this.pos.y, this.pos.z, { r: this.r * 1.05 });
+          for (let i = 0; i < n; i++) spawn('botan', this.pos.x, this.pos.y, this.pos.z, { r: this.r * 1.05 * VIS });
           if (clickBudget > 0) { clickBudget--; sfxClick(rand(0.06, 0.12) * (mode === 'play' ? 1 : 0.6)); }
         }
       }
@@ -1055,7 +1060,8 @@ class Senko {
           if (k > 0.55) tremble = (k - 0.55) * 0.006;
           break;
       }
-      this.pos.set(this.tip.x + rand(-1, 1) * tremble, this.tip.y - this.r * 0.8 + rand(-1, 1) * tremble * 0.5, this.tip.z + rand(-1, 1) * tremble);
+      tremble *= VIS;
+      this.pos.set(this.tip.x + rand(-1, 1) * tremble, this.tip.y - this.r * 0.8 * VIS + rand(-1, 1) * tremble * 0.5, this.tip.z + rand(-1, 1) * tremble);
       this.smokeAcc += dt * 3 * (0.4 + this.int);
       while (this.smokeAcc >= 1) { this.smokeAcc -= 1; addSmoke(this.pos.x, this.pos.y + 0.01, this.pos.z); }
       if (this.pt >= dur) {
@@ -1075,7 +1081,7 @@ class Senko {
       this.pos.addScaledVector(this.vel, dt);
       this.int = lerp(this.int, 0.45, 1 - Math.exp(-3 * dt));
       this.emit('bud', 26, dt);
-      if (this.pos.y - this.r <= 0) this.miss();
+      if (this.pos.y - this.r * VIS <= 0) this.miss();
     } else if (this.state === 'spent') {
       this.st += dt;
       if (this.st > 1.2) this.state = 'gone';
@@ -1100,13 +1106,13 @@ class Senko {
     if (live) {
       const fl = 0.85 + Math.random() * 0.15;
       this.bead.position.copy(this.pos);
-      this.bead.scale.setScalar(this.r);
+      this.bead.scale.setScalar(this.r * VIS);
       const heat = 0.7 + this.int * 0.6;
       // 散り菊では火玉が冷めて赤く暗くなっていく
       const cool = this.state === 'burn' && this.phases[this.pi] && this.phases[this.pi][0] === 'chiri' ? clamp(this.pt / this.phases[this.pi][1], 0, 1) : 0;
       this.beadMat.color.setRGB(2.1 * heat * fl * (1 - 0.3 * cool), 0.85 * heat * fl * (1 - 0.55 * cool), 0.25 * heat * (1 - 0.6 * cool));
       this.glow.position.copy(this.pos);
-      const gs = 0.09 + this.int * 0.18;
+      const gs = (0.09 + this.int * 0.18) * VIS;
       this.glow.scale.set(gs, gs, 1);
       this.glowMat.opacity = (0.55 + 0.45 * fl) * 1.0;
       this.light.position.copy(this.pos);
@@ -1464,7 +1470,7 @@ function update(dt) {
   flashLight.intensity = flashI;
 
   // 蚊取り線香の煙
-  coilSmokeAcc += dt * 1.6;
+  coilSmokeAcc += coil.visible ? dt * 1.6 : 0;
   while (coilSmokeAcc >= 1) {
     coilSmokeAcc -= 1;
     _a.copy(coilTipLocal).add(coil.position);
