@@ -63,6 +63,20 @@ const glowTex = canvasTex(128, 128, (c, w) => {
   c.fillStyle = g; c.fillRect(0, 0, w, w);
 }, { srgb: false });
 
+// 着火の炎（下が白く、上へ橙にすぼまる）
+const flameTex = canvasTex(64, 128, (c, w, h) => {
+  c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 3; i++) {
+    const g = c.createRadialGradient(w / 2, h * 0.66, 0, w / 2, h * 0.66, h * (0.32 - i * 0.07));
+    const col = [[255, 120, 30], [255, 190, 90], [255, 245, 210]][i];
+    g.addColorStop(0, `rgb(${col})`); g.addColorStop(1, 'rgb(0,0,0)');
+    c.save(); c.globalCompositeOperation = 'lighter';
+    c.translate(w / 2, h * 0.66); c.scale(0.6 - i * 0.1, 1); c.translate(-w / 2, -h * 0.66);
+    c.fillStyle = g; c.fillRect(0, 0, w * 3, h);
+    c.restore();
+  }
+}, { srgb: false });
+
 const smokeTex = canvasTex(128, 128, (c, w) => {
   for (let i = 0; i < 14; i++) {
     const x = w / 2 + rand(-18, 18), y = w / 2 + rand(-18, 18), r = rand(18, 40);
@@ -480,6 +494,7 @@ function initAudio() {
   src.start();
 
   cricketLoop();
+  startFestival();
 }
 
 function env(g, t, peak, attack, decay) {
@@ -596,6 +611,86 @@ function windChime() {
 }
 setTimeout(windChime, 6000);
 
+// 遠くの祭り囃子（大太鼓・締太鼓・鉦・篠笛）。こもらせて残響を深くし、ほんのり流す
+let fest = null;
+function startFestival() {
+  if (!AC || fest) return;
+  const bus = AC.createGain(); bus.gain.value = 0;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.3;
+  const dry = AC.createGain(); dry.gain.value = 0.55;
+  const wet = AC.createGain(); wet.gain.value = 1.0;
+  bus.connect(lp); lp.connect(dry); dry.connect(master); lp.connect(wet); wet.connect(revIn);
+  bus.gain.setTargetAtTime(0.11, AC.currentTime, 3);  // ゆっくり聞こえてくる
+  // 風で遠くなったり近くなったり
+  const lfo = AC.createOscillator(); lfo.frequency.value = 0.045;
+  const lfoG = AC.createGain(); lfoG.gain.value = 0.035;
+  lfo.connect(lfoG); lfoG.connect(bus.gain); lfo.start();
+
+  // 篠笛の旋律（律音階）を一度だけ作り、繰り返す
+  const scale = [587.33, 659.25, 783.99, 880.0, 987.77, 1174.66, 1318.51, 1567.98];
+  const phrase = [];
+  let idx = 3;
+  for (let i = 0; i < 32; i++) {
+    if (i % 8 === 7) { phrase.push(null); continue; }
+    idx = clamp(idx + [-2, -1, -1, 0, 1, 1, 2][Math.floor(Math.random() * 7)], 0, scale.length - 1);
+    phrase.push({ f: scale[idx], len: Math.random() < 0.3 ? 2 : 1 });
+  }
+  const BEAT = 60 / 104 / 2;  // 8分音符
+  fest = { bus, step: 0, next: AC.currentTime + 0.5, phrase, BEAT };
+  setInterval(festTick, 90);
+}
+function festTick() {
+  if (!fest || !AC) return;
+  while (fest.next < AC.currentTime + 0.35) {
+    festStep(fest.step, fest.next);
+    fest.step++;
+    fest.next += fest.BEAT * (fest.step % 2 ? 1.06 : 0.94);  // 少し跳ねる
+  }
+}
+function festStep(i, t) {
+  const b = fest.bus, bar = i % 16;
+  // 大太鼓：ドン ・ ・ ドン ・ ドドン ・
+  if ([0, 6, 10, 11].includes(bar) || (bar === 14 && Math.random() < 0.5)) {
+    const o = AC.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.25);
+    const g = AC.createGain(); env(g, t, bar === 11 ? 0.5 : 0.8, 0.005, 0.45);
+    o.connect(g); g.connect(b); o.start(t); o.stop(t + 0.6);
+  }
+  // 締太鼓：テケテケ
+  if (bar % 2 === 1 || Math.random() < 0.25) {
+    const o = AC.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(330, t); o.frequency.exponentialRampToValueAtTime(220, t + 0.06);
+    const g = AC.createGain(); env(g, t, 0.18 * rand(0.6, 1), 0.002, 0.08);
+    o.connect(g); g.connect(b); o.start(t); o.stop(t + 0.12);
+  }
+  // 鉦：チャン・チキ
+  if (bar % 4 === 0 || bar % 4 === 2 || (bar % 4 === 3 && Math.random() < 0.6)) {
+    for (const [m, a] of [[1, 1], [2.41, 0.6], [3.87, 0.4]]) {
+      const o = AC.createOscillator(); o.type = 'square'; o.frequency.value = 1180 * m;
+      const g = AC.createGain(); env(g, t, 0.025 * a, 0.001, bar % 4 === 0 ? 0.18 : 0.07);
+      o.connect(g); g.connect(b); o.start(t); o.stop(t + 0.25);
+    }
+  }
+  // 篠笛
+  const n = fest.phrase[i % fest.phrase.length];
+  if (n && (i % fest.phrase.length === 0 || fest.phrase[(i - 1 + fest.phrase.length) % fest.phrase.length] !== n)) {
+    const dur = fest.BEAT * 2 * n.len;
+    const o = AC.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(n.f * 0.94, t);
+    o.frequency.exponentialRampToValueAtTime(n.f, t + 0.06);  // 指打ちのようなしゃくり
+    const vib = AC.createOscillator(); vib.frequency.value = 5.5;
+    const vg = AC.createGain(); vg.gain.value = n.f * 0.008;
+    vib.connect(vg); vg.connect(o.frequency);
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.05);
+    g.gain.setValueAtTime(0.08, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(b);
+    o.start(t); o.stop(t + dur + 0.05); vib.start(t); vib.stop(t + dur + 0.05);
+  }
+}
+
 // ============================================================
 // 火花（線＋光点、加算合成）
 // ============================================================
@@ -625,13 +720,17 @@ const PAL = [
   [[1.0, 0.86, 0.55], [1.0, 0.45, 0.1]],   // 見事
   [[1.0, 0.7, 0.4], [0.9, 0.22, 0.05]],    // よし
   [[1.0, 0.45, 0.2], [0.6, 0.08, 0.02]],   // 落下の飛沫
+  [[1.0, 0.6, 0.3], [0.65, 0.1, 0.02]],    // 散り菊：冷めた赤
 ];
 const KIND = {
   bud:     { sp: [0.08, 0.24], life: [0.08, 0.2],  tr: 0.04,  g: 0.3 },
-  botan:   { sp: [0.4, 0.9],   life: [0.12, 0.28], tr: 0.045, g: 0.5, br: 1, bp: 0.65 },
-  matsuba: { sp: [0.7, 1.6],   life: [0.1, 0.26],  tr: 0.04,  g: 0.3, br: 2, bp: 0.92 },
+  // 牡丹：太く大きく広がり、枝の先も大きく開く
+  botan:   { sp: [0.6, 1.3],   life: [0.2, 0.42],  tr: 0.05,  g: 0.6, br: 1, bp: 0.9, cm: 1.6, cl: 1.7, k: 1.15 },
+  // 松葉：細く長い線が勢いよく、二段に枝分かれ
+  matsuba: { sp: [0.9, 1.9],   life: [0.12, 0.3],  tr: 0.07,  g: 0.3, br: 2, bp: 0.92, cm: 0.85, cl: 0.8, k: 0.85 },
   yanagi:  { sp: [0.35, 0.8],  life: [0.45, 0.95], tr: 0.08,  g: 1.6 },
-  chiri:   { sp: [0.18, 0.5],  life: [0.12, 0.3],  tr: 0.04,  g: 0.4, br: 1, bp: 0.35 },
+  // 散り菊：小さく短く、暗い
+  chiri:   { sp: [0.12, 0.35], life: [0.08, 0.22], tr: 0.03,  g: 0.4, br: 1, bp: 0.2, cm: 0.6, cl: 0.7 },
   child:   { sp: [0.25, 0.75], life: [0.05, 0.16], tr: 0.035, g: 0.3 },
   burst:   { sp: [0.7, 2.0],   life: [0.5, 1.15],  tr: 0.05,  g: 0.8, br: 1, bp: 0.35, drag: 1.5 },
   splash:  { sp: [0.3, 0.9],   life: [0.18, 0.45], tr: 0.035, g: 3.0 },
@@ -652,8 +751,11 @@ function spawn(kind, x, y, z, opt) {
   let br = 0;
   if (opt && opt.br !== undefined) br = opt.br;
   else if (k.br && Math.random() < (k.bp || 1)) br = k.br;
-  sparks.push({ x, y, z, vx: _d.x * sp, vy: _d.y * sp, vz: _d.z * sp, l: life, m: life, tr: k.tr, g: k.g,
-    br, p: (opt && opt.p) || 0, drag: k.drag || 1, k: kind === 'child' ? 0.4 : 1 });
+  const lm = (opt && opt.lifeMul) || 1;
+  sparks.push({ x, y, z, vx: _d.x * sp, vy: _d.y * sp, vz: _d.z * sp, l: life * lm, m: life * lm, tr: k.tr, g: k.g,
+    br, p: (opt && opt.p) || 0, drag: k.drag || 1,
+    k: (opt && opt.k !== undefined) ? opt.k : (k.k || 1), cm: k.cm || 1, cl: k.cl || 1 });
+  return sparks[sparks.length - 1];
 }
 function updateSparks(dt) {
   for (let i = sparks.length - 1; i >= 0; i--) {
@@ -664,7 +766,9 @@ function updateSparks(dt) {
         const n = 3 + Math.floor(Math.random() * 4);
         for (let j = 0; j < n; j++) {
           const o = 0.004;
-          spawn('child', p.x + rand(-o, o), p.y + rand(-o, o), p.z + rand(-o, o), { br: p.br - 1, p: p.p, spMul: p.br > 1 ? 1 : 0.8 });
+          const c = spawn('child', p.x + rand(-o, o), p.y + rand(-o, o), p.z + rand(-o, o),
+            { br: p.br - 1, p: p.p, spMul: (p.br > 1 ? 1 : 0.8) * p.cm, lifeMul: p.cl, k: p.k * 0.45 });
+          if (c) { c.cm = p.cm; c.cl = p.cl; }
         }
         if (clickBudget > 0 && Math.random() < 0.55) { clickBudget--; sfxClick(rand(0.03, 0.09) * (mode === 'play' ? 1 : 0.6)); }
       }
@@ -787,7 +891,7 @@ const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
 const beadGeo = new THREE.SphereGeometry(1, 20, 14);
 const PAPERS = [0xc2456f, 0x7a58c0, 0x2f7fa8, 0xd0902c, 0x3f8f5c].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
 const wickMat = new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.9 });
-const PHASE_INT = { tsubomi: 0.35, botan: 0.65, matsuba: 1.0, yanagi: 0.75, chiri: 0.35 };
+const PHASE_INT = { tsubomi: 0.35, botan: 0.75, matsuba: 1.0, yanagi: 0.7, chiri: 0.22 };
 const _up = new THREE.Vector3(0, 1, 0), _dir = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
 const slotLights = [];
@@ -832,23 +936,39 @@ class Senko {
     this.bead = new THREE.Mesh(beadGeo, this.beadMat);
     this.glowMat = new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(1.6, 0.55, 0.15), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false });
     this.glow = new THREE.Sprite(this.glowMat);
-    this.bead.visible = this.glow.visible = false;
-    scene.add(this.paper, this.wick, this.bead, this.glow);
+    this.flameMat = new THREE.SpriteMaterial({ map: flameTex, color: new THREE.Color(1.3, 1.0, 0.8), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false });
+    this.flame = new THREE.Sprite(this.flameMat);
+    this.flame.center.set(0.5, 0.3);
+    this.bead.visible = this.glow.visible = this.flame.visible = false;
+    this.it = 0; this.burnt = 0; this.burstT = 0.1;
+    this.igniteDur = rand(1.0, 1.4);
+    scene.add(this.paper, this.wick, this.bead, this.glow, this.flame);
     this.light = slotLights[slot.i];
   }
   dispose() {
-    scene.remove(this.paper, this.wick, this.bead, this.glow);
-    this.beadMat.dispose(); this.glowMat.dispose();
+    scene.remove(this.paper, this.wick, this.bead, this.glow, this.flame);
+    this.beadMat.dispose(); this.glowMat.dispose(); this.flameMat.dispose();
     this.light.intensity = 0;
   }
   anchor(out) { return out.set(this.slot.x, this.slot.top + 0.12, this.slot.z); }
-  emit(kind, rate, dt) {
+  emit(kind, rate, dt, opt) {
     this.acc[kind] = (this.acc[kind] || 0) + rate * dt;
     while (this.acc[kind] >= 1) {
       this.acc[kind] -= 1;
       const r = this.r * 0.7;
-      spawn(kind, this.pos.x + rand(-r, r), this.pos.y + rand(-r, r), this.pos.z + rand(-r, r));
+      spawn(kind, this.pos.x + rand(-r, r), this.pos.y + rand(-r, r), this.pos.z + rand(-r, r), opt);
     }
+  }
+  // 各段階の火花の出方。k は段階内の進み具合 (0〜1)
+  rates(ph, k) {
+    switch (ph) {
+      case 'tsubomi': return { bud: 3 + 8 * k };
+      case 'botan':   return { botan: 16 + 16 * k, bud: 6, burst: 1.0 + 0.6 * k };
+      case 'matsuba': return { matsuba: 80 + 60 * Math.sin(k * Math.PI) };
+      case 'yanagi':  return { yanagi: 85 * (1 - k * 0.45), matsuba: 14 * (1 - k) };
+      case 'chiri':   return { chiri: 12 * (1 - k) + 1.5 };
+    }
+    return {};
   }
   update(dt) {
     this.t += dt;
@@ -861,14 +981,13 @@ class Senko {
       this.et += dt;
       const k = Math.min(1, this.et / 0.8);
       L = fullLen * easeOut(k);
-      if (k >= 1) {
-        this.state = 'burn';
-        this.bead.visible = this.glow.visible = true;
-        addFx('flash', this.tip, { color: new THREE.Color(1.5, 0.8, 0.4), life: 0.35, size: 0.25 });
-        for (let i = 0; i < 14; i++) spawn('botan', this.tip.x, this.tip.y, this.tip.z, { br: 0 });
-        sfxIgnite();
-      }
+      if (k >= 1) { this.state = 'ignite'; this.it = 0; sfxIgnite(); }
+    } else if (this.state === 'ignite') {
+      this.it += dt;
+      this.burnt = 0.03 * easeOut(Math.min(1, this.it / this.igniteDur));  // 先端の紙が燃えて縮む
+      if (this.it >= this.igniteDur) { this.state = 'burn'; this.r = 0.0018; }
     }
+    L = Math.max(0.02, L - this.burnt);
     this.prevTip.copy(this.tip);
     this.tip.set(A.x + Math.sin(ax) * L, A.y - Math.cos(ax) * Math.cos(az) * L, A.z + Math.sin(az) * L);
 
@@ -879,28 +998,45 @@ class Senko {
       this.int = lerp(this.int, PHASE_INT[ph], 1 - Math.exp(-4 * dt));
       let tremble = 0;
       const R0 = 0.0072;
+      // 段階の終わり 3 割で、次の段階の出方へ少しずつ移る
+      const cur = this.rates(ph, k);
+      const nextPh = this.phases[this.pi + 1];
+      const w = nextPh ? clamp((k - 0.7) / 0.3, 0, 1) ** 2 * (3 - 2 * clamp((k - 0.7) / 0.3, 0, 1)) : 0;
+      const nxt = nextPh ? this.rates(nextPh[0], 0) : {};
+      const mix = {};
+      for (const key in cur) mix[key] = cur[key] * (1 - w);
+      for (const key in nxt) mix[key] = (mix[key] || 0) + nxt[key] * w;
+      const chiriK = ph === 'chiri' ? k : (nextPh && nextPh[0] === 'chiri' ? 0 : -1);
+      for (const key in mix) {
+        if (key === 'burst') continue;
+        const opt = key === 'chiri' ? { p: 5, k: lerp(0.75, 0.3, Math.max(0, chiriK)) } : undefined;
+        this.emit(key, mix[key], dt, opt);
+      }
+      // 牡丹：ときどき「ぱっ」と大きく開く
+      if (mix.burst) {
+        this.burstT -= dt;
+        if (this.burstT <= 0) {
+          this.burstT = rand(0.14, 0.32) / mix.burst;
+          const n = 9 + Math.floor(Math.random() * 8);
+          for (let i = 0; i < n; i++) spawn('botan', this.pos.x, this.pos.y, this.pos.z);
+          if (clickBudget > 0) { clickBudget--; sfxClick(rand(0.06, 0.12) * (mode === 'play' ? 1 : 0.6)); }
+        }
+      }
       switch (ph) {
         case 'tsubomi':  // 蕾：火玉が膨らむ
           this.r = lerp(0.0018, R0, easeOut(k)) * (1 + 0.08 * Math.sin(this.t * 37));
-          this.emit('bud', 3 + 8 * k, dt);
           break;
-        case 'botan':    // 牡丹：ぱちぱち
-          this.r = R0 * (1 + 0.05 * Math.sin(this.t * 31));
-          this.emit('botan', 9 + 20 * k, dt);
-          this.emit('bud', 4, dt);
+        case 'botan':    // 牡丹：ぱちぱちと大きく
+          this.r = R0 * (1 + 0.06 * Math.sin(this.t * 31));
           break;
-        case 'matsuba':  // 松葉：激しく枝分かれ
+        case 'matsuba':  // 松葉：細く長く、激しく枝分かれ
           this.r = R0 * 1.06 * (1 + 0.05 * Math.sin(this.t * 41));
-          this.emit('matsuba', 42 + 34 * Math.sin(k * Math.PI), dt);
           break;
         case 'yanagi':   // 柳：しだれる
-          this.r = R0 * 1.04;
-          this.emit('yanagi', 48 * (1 - k * 0.5), dt);
-          this.emit('matsuba', 8 * (1 - k), dt);
+          this.r = lerp(R0 * 1.06, R0 * 1.0, k);
           break;
-        case 'chiri':    // 散り菊：静かに、そして震える
-          this.r = lerp(R0, R0 * 0.88, k);
-          this.emit('chiri', 10 * (1 - k) + 1.5, dt);
+        case 'chiri':    // 散り菊：小さく、冷めて、震える
+          this.r = lerp(R0, R0 * 0.85, k);
           if (k > 0.55) tremble = (k - 0.55) * 0.006;
           break;
       }
@@ -911,8 +1047,14 @@ class Senko {
         this.pi++; this.pt = 0;
         if (this.pi >= this.phases.length) this.drop(dt);
       }
-    } else if (this.state === 'enter') {
+    } else if (this.state === 'enter' || this.state === 'ignite') {
       this.pos.copy(this.tip);
+      if (this.state === 'ignite') {
+        this.smokeAcc += dt * 7;
+        while (this.smokeAcc >= 1) { this.smokeAcc -= 1; addSmoke(this.pos.x, this.pos.y + 0.03, this.pos.z); }
+        const q = this.it / this.igniteDur;
+        if (q > 0.6) { this.r = lerp(0.0008, 0.0018, (q - 0.6) / 0.4); this.emit('bud', 4, dt, { k: 0.6 }); }
+      }
     } else if (this.state === 'fall') {
       this.vel.y -= gravity() * dt;
       this.pos.addScaledVector(this.vel, dt);
@@ -928,21 +1070,33 @@ class Senko {
     const top = A, mid = _b.lerpVectors(A, this.tip, 0.55);
     placeSegment(this.paper, top, mid, 0.0019);
     placeSegment(this.wick, mid, this.tip, 0.0014);
-    const live = this.state === 'burn' || this.state === 'fall';
+    const igniting = this.state === 'ignite';
+    this.flame.visible = igniting;
+    if (igniting) {
+      const q = this.it / this.igniteDur;
+      const fs = (q < 0.15 ? q / 0.15 : q > 0.6 ? Math.max(0, 1 - (q - 0.6) / 0.4) : 1) * (0.85 + Math.random() * 0.3);
+      this.flame.position.copy(this.tip);
+      this.flame.scale.set(0.032 * fs, 0.095 * fs * (0.9 + Math.random() * 0.25), 1);
+      this.light.position.copy(this.tip);
+      this.light.intensity = 0.9 * fs + 0.15;
+    }
+    const live = this.state === 'burn' || this.state === 'fall' || (igniting && this.it / this.igniteDur > 0.6);
     this.bead.visible = this.glow.visible = live;
     if (live) {
       const fl = 0.85 + Math.random() * 0.15;
       this.bead.position.copy(this.pos);
       this.bead.scale.setScalar(this.r);
       const heat = 0.7 + this.int * 0.6;
-      this.beadMat.color.setRGB(3.2 * heat * fl, 1.15 * heat * fl, 0.32 * heat);
+      // 散り菊では火玉が冷めて赤く暗くなっていく
+      const cool = this.state === 'burn' && this.phases[this.pi] && this.phases[this.pi][0] === 'chiri' ? clamp(this.pt / this.phases[this.pi][1], 0, 1) : 0;
+      this.beadMat.color.setRGB(3.2 * heat * fl * (1 - 0.3 * cool), 1.15 * heat * fl * (1 - 0.55 * cool), 0.32 * heat * (1 - 0.6 * cool));
       this.glow.position.copy(this.pos);
       const gs = 0.07 + this.int * 0.15;
       this.glow.scale.set(gs, gs, 1);
       this.glowMat.opacity = 0.55 + 0.45 * fl;
       this.light.position.copy(this.pos);
       this.light.intensity = (0.25 + this.int * 1.7) * fl;
-    } else {
+    } else if (!igniting) {
       this.light.intensity = 0;
     }
   }
@@ -964,8 +1118,6 @@ class Senko {
     addFx('flash', this.pos, { color: new THREE.Color(1.2, 0.35, 0.1), life: 0.3, size: 0.3 });
     if (mode === 'play') {
       lives--; combo = 0; shake = 0.35; redFlash = 0.35;
-      const s = toScreen(this.pos);
-      pops.push({ x: s.x, y: s.y - 40, text: 'ぽとり…', size: 22, color: '#d98a7a', l: 1.3, m: 1.3 });
       sfxMiss();
       if (lives <= 0 && overTimer < 0) overTimer = 1.6;
     }
@@ -994,7 +1146,6 @@ class Senko {
     sfxCatch(rank, combo);
     if (combo % 10 === 0 && lives < 3) {
       lives++;
-      pops.push({ x: W / 2, y: H * 0.42, text: '命 ひとつ 戻る', size: 24, color: '#ffe0a8', l: 1.8, m: 1.8 });
       sfxLifeUp();
     }
     this.state = 'spent'; this.st = 0;
@@ -1028,7 +1179,6 @@ function tap(x, y) {
     if (!sn || sn.state !== 'burn') continue;
     const a = toScreen(sn.pos);
     if (Math.hypot(x - a.x, y - a.y) < hitR * 0.8) {
-      if (combo > 0) pops.push({ x: a.x, y: a.y + 44, text: 'まだ…', size: 18, color: '#9aa0c0', l: 0.9, m: 0.9 });
       combo = 0;
       sfxEarly();
       ripples.push({ x, y, l: 0.5, m: 0.5, c: '154,160,192' });
@@ -1110,10 +1260,7 @@ function update(dt) {
   const target = mode === 'play' ? Math.min(maxSlots, 1 + Math.floor(elapsed / 8)) : Math.min(maxSlots, 3);
   if (mode === 'play') elapsed += dt;
   if (activeCount() < target && (mode !== 'play' || lives > 0)) {
-    const s = activateOne();
-    if (s && mode === 'play' && elapsed > 1) {
-      pops.push({ x: W / 2, y: H * 0.5, text: '― 一本 増えた ―', size: 16, color: 'rgba(244,230,200,0.85)', l: 1.6, m: 1.6, still: true });
-    }
+    activateOne();
   }
   for (const s of slots) {
     if (!s.active) continue;
@@ -1228,5 +1375,5 @@ function drawHud() {
 window.addEventListener('resize', layout);
 layout();
 // テスト用の小さな窓口
-window.__senko = { get state() { return { mode, score, lives, combo, sparks: sparks.length, slots: slots.map(s => s.sn && { state: s.sn.state, ...toScreen(s.sn.pos) }) }; }, tap, startGame, step(sec, noRender) { for (let t = 0; t < sec; t += 1 / 60) update(1 / 60); if (!noRender) render(); } };
+window.__senko = { get state() { return { mode, score, lives, combo, sparks: sparks.length, slots: slots.map(s => s.sn && { state: s.sn.state, ph: s.sn.phases[s.sn.pi] && s.sn.phases[s.sn.pi][0], k: s.sn.phases[s.sn.pi] ? s.sn.pt / s.sn.phases[s.sn.pi][1] : 0, ...toScreen(s.sn.pos) }) }; }, tap, startGame, step(sec, noRender) { for (let t = 0; t < sec; t += 1 / 60) update(1 / 60); if (!noRender) render(); } };
 requestAnimationFrame(t => { lastT = t; requestAnimationFrame(frame); });
