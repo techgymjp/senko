@@ -1364,8 +1364,9 @@ $('contWatch').addEventListener('click', async () => {
 });
 
 // ---------- シェア ----------
-const STORE_URL = 'https://play.google.com/store/apps/details?id=jp.techgym.senko';
-function shareUrl() { return NATIVE ? STORE_URL : location.href.split(/[?#]/)[0]; }
+// シェア文に付ける URL（Web 版・アプリ版とも同じ。線香花火の紹介ページ）
+const SHARE_URL = 'https://techgym.jp/column/claude-code-game-senko/';
+function shareUrl() { return SHARE_URL; }
 $('shareBtn').addEventListener('click', async () => {
   const text = T('shareText', score.toLocaleString(), bestCombo, contUsed);
   const url = shareUrl();
