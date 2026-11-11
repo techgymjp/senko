@@ -362,6 +362,7 @@ let W = 1, H = 1, DPR = 1;
 let maxSlots = 3;
 const slots = [];
 const ZJ = [0, -0.16, -0.06, -0.22, -0.1, -0.28];
+const ZJ_PORTRAIT = [0, -0.34, -0.12, -0.46, -0.22];  // 縦長：前後に大きくずらして重なりを避ける
 let sparkZ = -0.2, portrait = false;
 const _v = new THREE.Vector3();
 
@@ -424,17 +425,20 @@ function layout() {
   camera.updateMatrixWorld(true);
 
   const halfW = Math.abs(rayAt(1, 0, sparkZ).x);
-  const n = clamp(Math.min(Math.floor(W / 105), Math.floor(halfW * 2 * 0.82 / 0.26)), 3, 6);
+  const n = portrait ? clamp(Math.floor(W / 76), 4, 5) : clamp(Math.min(Math.floor(W / 105), Math.floor(halfW * 2 * 0.82 / 0.26)), 3, 6);
   maxSlots = n;
   while (slots.length < n) slots.push({ i: slots.length, active: false, sn: null, cool: 0, x: 0, z: 0, top: 1.4, yLo: 0.7, yHi: 0.9 });
   for (let i = slots.length - 1; i >= n; i--) { if (slots[i].sn) slots[i].sn.dispose(); slots.pop(); }
   for (const s of slots) {
-    s.z = sparkZ + ZJ[s.i];
+    s.z = sparkZ + (portrait ? ZJ_PORTRAIT : ZJ)[s.i];
     const hw = Math.abs(rayAt(1, 0, s.z).x);
     s.x = lerp(-hw * 0.8, hw * 0.8, (s.i + 0.5) / n);
     s.top = rayAt(0, 1, s.z).y;
     // 火玉の高さの範囲（縦長では画面の上の方に）
-    if (portrait) { s.yLo = rayAt(0, 0.5, s.z).y; s.yHi = rayAt(0, 0.74, s.z).y; }
+    if (portrait) {  // 隣どうしで火玉の高さを上下にずらす
+      const hi = s.i % 2 === 0;
+      s.yLo = rayAt(0, hi ? 0.6 : 0.4, s.z).y; s.yHi = rayAt(0, hi ? 0.78 : 0.56, s.z).y;
+    }
     else { s.yLo = s.top * 0.5; s.yHi = s.top * 0.66; }
   }
 
@@ -453,11 +457,17 @@ let mode = 'title';
 let score = 0, combo = 0, lives = 3, elapsed = 0, bestCombo = 0;
 let best = 0;
 try { best = +localStorage.getItem('senko-best') || 0; } catch (e) {}
-let shake = 0, overTimer = -1, time = 0, redFlash = 0;
+let shake = 0, overTimer = -1, time = 0, redFlash = 0, firstSenko = false;
 const pops = [], ripples = [];
 
-function durMul() { return mode === 'play' ? Math.max(0.5, 1 - elapsed / 180) : 1; }
-function gravity() { return mode === 'play' ? 3.0 + Math.min(elapsed / 110, 1) * 3.0 : 3.0; }
+function durMul() {  // 燃える時間：90秒で半分、その後もゆっくり短く（下限 0.3）
+  if (mode !== 'play') return 1;
+  return elapsed < 90 ? 1 - elapsed / 180 : Math.max(0.3, 0.5 * Math.exp(-(elapsed - 90) / 240));
+}
+function gravity() {  // 落ちる速さ：110秒で2倍、その後もゆっくり速く（上限 3倍）
+  if (mode !== 'play') return 3.0;
+  return Math.min(9.0, 3.0 + Math.min(elapsed / 110, 1) * 3.0 + Math.max(0, elapsed - 110) * 0.012);
+}
 
 // ============================================================
 // 音（すべて Web Audio で合成）
@@ -917,7 +927,8 @@ class Senko {
   constructor(slot) {
     this.slot = slot;
     this.beadFrac = Math.random();
-    const m = durMul();
+    let m = durMul();
+    if (mode === 'play' && firstSenko) { m *= 0.4; firstSenko = false; }  // 最初の1本は早めに落ちる
     this.phases = [
       ['tsubomi', rand(1.0, 1.6) * m],
       ['botan',   rand(1.2, 2.2) * m],
@@ -1144,7 +1155,7 @@ class Senko {
     addFx('flash', this.pos, { color: new THREE.Color(0.9, 0.55, 0.25), life: 0.4, size: rank === 0 ? 0.5 : 0.38 });
     flashLight.position.copy(this.pos); flashI = rank === 0 ? 6 : 4;
     sfxCatch(rank, combo);
-    if (combo % 10 === 0 && lives < 3) {
+    if (combo % 20 === 0 && lives < 3) {
       lives++;
       sfxLifeUp();
     }
@@ -1218,6 +1229,7 @@ function startGame() {
   score = 0; combo = 0; lives = 3; elapsed = 0; bestCombo = 0; overTimer = -1;
   sparks.length = 0; pops.length = 0;
   clearSlots();
+  firstSenko = true;
   activateOne();
   titleEl.classList.add('hidden'); overEl.classList.add('hidden');
   document.body.classList.add('playing');

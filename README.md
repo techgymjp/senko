@@ -15,7 +15,7 @@
 - 落ちた火玉が地面につく前に、空中でタップ（クリック）すると成功。
 - 落ちてすぐ取るほど高得点（極 300 / 見事 200 / よし 100）。連続で取ると倍率が上がります。
 - 花火は時間とともにどんどん増え、燃え方も速くなります。
-- 地面に落とすと命がひとつ減り、3 つ失うとおしまい。10 連続ごとに命がひとつ戻ります。
+- 地面に落とすと命がひとつ減り、3 つ失うとおしまい。20 連続ごとに命がひとつ戻ります。
 - 燃えている火玉を早まって触ると連続が途切れます。
 
 ## 技術メモ
@@ -30,5 +30,5 @@
 
 - The sparkler goes through its real stages: ignition → *botan* (peony) → *matsuba* (pine needles) → *yanagi* (willow) → *chirigiku* (falling chrysanthemum), and finally the glowing bead **drops**.
 - Tap the falling bead in mid-air before it hits the ground. The sooner you catch it, the higher the score (Perfect 300 / Great 200 / Good 100). Streaks raise a multiplier.
-- More sparklers keep appearing and burn faster over time. Drop three beads and the game is over.
+- More sparklers keep appearing and burn faster over time. Drop three beads and the game is over (every 20 catches in a row gives one back).
 - The language follows your browser setting; use the button at the bottom-left to switch between English and Japanese (or add `?lang=en` / `?lang=ja` to the URL).
