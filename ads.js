@@ -11,11 +11,11 @@ window.Ads = (() => {
         rewarded: 'ca-app-pub-3940256099942544/5224354917',
         banner: 'ca-app-pub-3940256099942544/6300978111',
       },
-      // 本番の広告ユニット(AdMob の Android アプリ「線香花火」)。AdMob に登録したら入れる
+      // 本番の広告ユニット(AdMob の Android アプリ「線香花火」)
       production: {
-        interstitial: '',
-        rewarded: '',
-        banner: '',
+        interstitial: 'ca-app-pub-6411535997477460/7799005406',
+        rewarded: 'ca-app-pub-6411535997477460/3779869346',
+        banner: 'ca-app-pub-6411535997477460/7910686049',
       },
     },
     ios: {
