@@ -69,12 +69,42 @@
     height: 40px; min-width: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(244,230,200,.25);
     background: rgba(5,6,13,.4); color: var(--ink-dim); font-size: 13px; cursor: pointer; font-family: inherit; letter-spacing: .08em;
   }
-  body.playing #lang { display: none; }
   .caption { margin: -8px 0 0; font-size: 12px; letter-spacing: .16em; color: var(--ink-dim); text-transform: uppercase; }
   .caption:empty { display: none; }
   html[lang="en"] h2 { letter-spacing: .12em; padding-left: .12em; }
   html[lang="en"] button.main { letter-spacing: .14em; padding-left: calc(34px + .14em); }
   html[lang="en"] .sub { letter-spacing: .02em; line-height: 1.8; }
+  .tagline { margin: 0; font-size: clamp(17px, 4.6vw, 22px); letter-spacing: .14em; text-shadow: 0 1px 8px #000; }
+  .bestLine { margin: 0; font-size: 16px; letter-spacing: .14em; color: var(--ink-dim); min-height: 1.2em; }
+  .btns { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 6px; }
+  button.ghost {
+    font: inherit; font-size: 17px; letter-spacing: .2em; padding: 11px 30px 11px calc(30px + .2em);
+    color: var(--ink); background: rgba(5,6,13,.45); border: 1px solid rgba(244,230,200,.35); border-radius: 999px; cursor: pointer;
+  }
+  html[lang="en"] button.ghost { letter-spacing: .08em; padding-left: calc(30px + .08em); }
+  .rules { margin: 0; padding: 0 0 0 1.3em; max-width: 26em; text-align: left; line-height: 1.85; font-size: clamp(15px, 4vw, 17px); text-shadow: 0 1px 6px #000; }
+  .rules li { margin: 0 0 6px; }
+  .rules em { font-style: normal; color: var(--fire); }
+  #contNote, #contUsed, #shareMsg { margin: 0; font-size: 14px; color: var(--ink-dim); letter-spacing: .06em; min-height: 1.2em; }
+  #legal {
+    position: fixed; left: 0; right: 0; bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px)); z-index: 3;
+    text-align: center; font-size: 12px; color: var(--ink-dim); letter-spacing: .04em;
+  }
+  #legal a { color: var(--ink-dim); margin: 0 6px; }
+  #pauseBtn {
+    position: fixed; left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); z-index: 3;
+    width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(244,230,200,.25); background: rgba(5,6,13,.4); cursor: pointer;
+  }
+  #pauseBtn::before, #pauseBtn::after { content: ''; position: absolute; top: 13px; width: 4px; height: 14px; background: var(--ink-dim); border-radius: 1px; }
+  #pauseBtn::before { left: 14px; } #pauseBtn::after { right: 14px; }
+  /* 画面ごとに出すもの */
+  body:not([data-screen="play"]) #pauseBtn { display: none; }
+  body:not([data-screen="title"]) #legal { display: none; }
+  body:not([data-screen="title"]):not([data-screen="over"]) #lang { display: none; }
+  /* アプリではバナー広告(高さ 50)と重ならないよう、下のボタンを上げる */
+  body.native #lang, body.native #mute { bottom: max(62px, calc(env(safe-area-inset-bottom) + 50px)); }
+  body.native #legal { bottom: max(112px, calc(env(safe-area-inset-bottom) + 100px)); }
+  @media (max-height: 620px) { .rules { font-size: 14px; line-height: 1.6; } h2 { font-size: 30px; } }
   #err { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; padding: 16px; text-align: center; z-index: 5; }
 </style>
 <script type="importmap">
@@ -86,16 +116,51 @@
 }
 </script>
 </head>
-<body>
+<body data-screen="title">
 <canvas id="gl"></canvas>
 <canvas id="hud"></canvas>
 
 <div id="title" class="ov">
   <h1>線香花火</h1>
   <p class="caption" data-i18n="caption"></p>
-  <p class="sub" data-i18n="sub">夏の夜、縁側にて。<br>火玉が <em>ぽたり</em> と落ちたら<br>地面につく前に 空中でタップ</p>
-  <button class="main" id="startBtn" data-i18n="start">火をつける</button>
-  <p class="note" data-i18n="note">音が出ます。落ちてすぐ取るほど高得点。<br>燃えている玉を早まって触ると連続が途切れます。</p>
+  <p class="tagline" data-i18n="tagline">夏の夜、縁側にて。</p>
+  <p class="bestLine" id="bestLine"></p>
+  <div class="btns">
+    <button class="main" id="startBtn" data-i18n="play">火をつける</button>
+    <button class="ghost" id="howBtn" data-i18n="howto">あそびかた</button>
+  </div>
+</div>
+
+<div id="howto" class="ov hidden">
+  <h2 data-i18n="howto">あそびかた</h2>
+  <ol class="rules">
+    <li data-i18n="rule1"></li>
+    <li data-i18n="rule2"></li>
+    <li data-i18n="rule3"></li>
+    <li data-i18n="rule4"></li>
+    <li data-i18n="rule5"></li>
+  </ol>
+  <div class="btns">
+    <button class="main" id="howPlay" data-i18n="play">火をつける</button>
+    <button class="ghost" id="howBack" data-i18n="back">もどる</button>
+  </div>
+</div>
+
+<div id="pause" class="ov hidden">
+  <h2 data-i18n="paused">ひと休み</h2>
+  <div class="btns">
+    <button class="main" id="resumeBtn" data-i18n="resume">つづける</button>
+    <button class="ghost" id="pauseTitleBtn" data-i18n="toTitle">タイトルへ</button>
+  </div>
+</div>
+
+<div id="cont" class="ov hidden">
+  <h2 data-i18n="contTitle">もう一本？</h2>
+  <p id="contNote"></p>
+  <div class="btns">
+    <button class="main" id="contWatch" data-i18n="contWatch">広告を見て続ける</button>
+    <button class="ghost" id="contSkip"></button>
+  </div>
 </div>
 
 <div id="over" class="ov hidden">
@@ -105,13 +170,29 @@
     <div class="best"><small data-i18n="best">最高</small><b id="bestScore">0</b></div>
   </div>
   <p id="newBest"></p>
-  <button class="main" id="retryBtn" data-i18n="retry">もう一度</button>
+  <p id="contUsed"></p>
+  <div class="btns">
+    <button class="main" id="retryBtn" data-i18n="retry">もう一度</button>
+    <button class="ghost" id="shareBtn" data-i18n="share">結果をシェア</button>
+    <button class="ghost" id="overTitleBtn" data-i18n="toTitle">タイトルへ</button>
+  </div>
+  <p id="shareMsg"></p>
 </div>
 
+<div id="legal">
+  <span id="buildInfo"></span>
+  <a id="privacyLink" href="https://techgym.jp/privacy-policy/" target="_blank" rel="noopener" data-i18n="privacy">プライバシーポリシー</a>
+  <span id="adPrivacy" hidden>|<a href="#" id="adPrivacyLink" data-i18n="adSettings">広告の設定</a></span>
+</div>
+
+<button id="pauseBtn" aria-label="一時停止"></button>
 <button id="mute" aria-label="音のオン・オフ">♪</button>
 <button id="lang" aria-label="Language">EN</button>
 <div id="err" data-i18n="err">このブラウザでは 3D 表示（WebGL）が使えないようです。</div>
 
+<script src="./ads-config.js"></script>
+<script src="./build-info.js"></script>
+<script src="./ads.js"></script>
 <script>
 (() => {
   const STR = {
@@ -119,27 +200,49 @@
       title: '線香花火',
       desc: '縁側で楽しむ線香花火ゲーム。火玉がぽたりと落ちた瞬間、空中でタップ。',
       caption: '',
-      sub: '夏の夜、縁側にて。<br>火玉が <em>ぽたり</em> と落ちたら<br>地面につく前に 空中でタップ',
-      start: '火をつける',
-      note: '音が出ます。落ちてすぐ取るほど高得点。<br>燃えている玉を早まって触ると連続が途切れます。',
+      tagline: '夏の夜、縁側にて。',
+      bestLine: n => `最高 ${n} 点`,
+      play: '火をつける', howto: 'あそびかた', back: 'もどる',
+      rule1: '線香花火は「着火 → 牡丹 → 松葉 → 柳 → 散り菊」と移り変わり、最後に火玉が <em>ぽたり</em> と落ちます。',
+      rule2: '落ちた火玉が地面につく前に、空中でタップしてください。',
+      rule3: '落ちてすぐ取るほど高得点。続けて取ると得点が上がります。',
+      rule4: '地面に落とすと命（右上の火玉）がひとつ減り、3つなくなるとおしまい。花火はどんどん増えます。',
+      rule5: '燃えている火玉を早まって触ると、連続が途切れます。音を出して遊んでください。',
+      paused: 'ひと休み', resume: 'つづける', toTitle: 'タイトルへ', pause: '一時停止',
+      contTitle: 'もう一本？', contNote: '広告を見ると、命がひとつ戻って続けられます（1回だけ）',
+      contWatch: '広告を見て続ける', contSkip: n => `おしまいにする（${n}）`, contLoading: '広告を読み込み中…',
+      contFail: '広告を読み込めませんでした', contUsed: n => `コンティニュー ${n} 回`,
       over: 'おしまい', score: '得点', best: '最高', retry: 'もう一度',
+      share: '結果をシェア', shareTitle: '線香花火', shareDialog: '結果をシェア', copied: '結果をコピーしました',
+      shareText: (s, c, u) => `縁側の線香花火で ${s} 点！` + (c >= 2 ? `（最大 ${c} 連）` : '') + (u ? `［コンティニュー ${u} 回］` : '') + ' #線香花火',
+      privacy: 'プライバシーポリシー', privacyUrl: 'https://techgym.jp/privacy-policy/', adSettings: '広告の設定',
       err: 'このブラウザでは 3D 表示（WebGL）が使えないようです。',
       mute: '音のオン・オフ', toggle: 'EN', toggleLabel: 'Switch to English',
       newBest: '― 自己最高 ―', maxCombo: n => `最大 ${n} 連`,
-      r0: '極', r1: '見事', r2: 'よし', combo: n => `${n} 連`, pts: '点',
     },
     en: {
       title: 'Senko Hanabi — Japanese Sparkler',
       desc: 'A Japanese sparkler game on a summer-night veranda. Tap the glowing bead the moment it drops.',
       caption: 'Senko Hanabi · Japanese sparkler',
-      sub: 'A summer night on the veranda.<br>When the glowing bead <em>drops</em>,<br>tap it in mid-air before it hits the ground.',
-      start: 'Light it',
-      note: 'Sound on. The sooner you catch it, the higher the score.<br>Touching a bead that is still burning breaks your streak.',
+      tagline: 'A summer night on the veranda.',
+      bestLine: n => `Best ${n}`,
+      play: 'Light it', howto: 'How to play', back: 'Back',
+      rule1: 'A sparkler burns through its stages — ignition, peony, pine needles, willow and falling chrysanthemum — and finally the glowing bead <em>drops</em>.',
+      rule2: 'Tap the falling bead in mid-air before it hits the ground.',
+      rule3: 'The sooner you catch it, the higher the score. Catch them in a row to earn more.',
+      rule4: 'Dropping a bead costs a life (the beads at the top right). Lose all three and it is over. More and more sparklers appear.',
+      rule5: 'Touching a bead that is still burning breaks your streak. Play with the sound on.',
+      paused: 'Paused', resume: 'Resume', toTitle: 'Title', pause: 'Pause',
+      contTitle: 'One more?', contNote: 'Watch an ad to get one life back and keep going (once per game).',
+      contWatch: 'Watch an ad to continue', contSkip: n => `End game (${n})`, contLoading: 'Loading the ad…',
+      contFail: 'The ad could not be loaded.', contUsed: n => `Continued ${n} time${n > 1 ? 's' : ''}`,
       over: 'Burnt out', score: 'Score', best: 'Best', retry: 'Play again',
+      share: 'Share result', shareTitle: 'Senko Hanabi', shareDialog: 'Share result', copied: 'Result copied',
+      shareText: (s, c, u) => `I scored ${s} in Senko Hanabi, the Japanese sparkler game!` + (c >= 2 ? ` (best streak ${c})` : '') + (u ? ` [continued ${u}x]` : '') + ' #SenkoHanabi',
+      privacy: 'Privacy Policy', privacyUrl: 'https://techgym.jp/privacy-policy-en/', adSettings: 'Ad settings',
       err: '3D graphics (WebGL) are not available in this browser.',
       mute: 'Sound on/off', toggle: '日本語', toggleLabel: '日本語に切り替え',
       newBest: '— New best —', maxCombo: n => `Best streak: ${n}`,
-      r0: 'Perfect', r1: 'Great', r2: 'Good', combo: n => `${n} combo`, pts: 'pts',
     },
   };
   let lang = 'ja';
@@ -157,6 +260,8 @@
     document.querySelector('meta[name="description"]').content = t('desc');
     document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = t(el.dataset.i18n); });
     document.getElementById('mute').setAttribute('aria-label', t('mute'));
+    document.getElementById('pauseBtn').setAttribute('aria-label', t('pause'));
+    document.getElementById('privacyLink').href = t('privacyUrl');
     const b = document.getElementById('lang');
     b.textContent = t('toggle'); b.setAttribute('aria-label', t('toggleLabel'));
     window.dispatchEvent(new Event('senko-lang'));

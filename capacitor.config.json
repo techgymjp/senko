@@ -1,0 +1,8 @@
+{
+  "appId": "jp.techgym.senko",
+  "appName": "線香花火",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#05060d"
+  }
+}

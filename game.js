@@ -1134,7 +1134,7 @@ class Senko {
     if (mode === 'play') {
       lives--; combo = 0; shake = 0.35; redFlash = 0.35;
       sfxMiss();
-      if (lives <= 0 && overTimer < 0) overTimer = 1.6;
+      if (lives <= 0 && overTimer < 0) overTimer = 2.4;  // 落ちた様子を見届けてから次へ
     }
   }
   caught() {
@@ -1172,7 +1172,7 @@ function toScreen(p) {
   return { x: (_sv.x * 0.5 + 0.5) * W, y: (-_sv.y * 0.5 + 0.5) * H };
 }
 function tap(x, y) {
-  if (mode !== 'play') return;
+  if (mode !== 'play' || paused) return;
   const hitR = Math.max(46, Math.min(W, H) * 0.075);
   let best = null, bestD = 1e9;
   for (const s of slots) {
@@ -1199,13 +1199,15 @@ function tap(x, y) {
   ripples.push({ x, y, l: 0.45, m: 0.45, c: '244,230,200' });
 }
 glCanvas.addEventListener('pointerdown', e => { e.preventDefault(); tap(e.clientX, e.clientY); }, { passive: false });
-window.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && mode !== 'play') startGame(); });
+window.addEventListener('keydown', e => {
+  if ((e.key === ' ' || e.key === 'Enter') && (screen === 'title' || screen === 'howto' || screen === 'over')) playFromMenu();
+  else if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && screen === 'play') pauseGame();
+  else if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && screen === 'pause') resumeGame();
+});
 
 // ============================================================
 // 画面遷移
 // ============================================================
-const titleEl = document.getElementById('title');
-const overEl = document.getElementById('over');
 function clearSlots() {
   for (const s of slots) { if (s.sn) s.sn.dispose(); s.active = false; s.sn = null; s.cool = 0; }
 }
@@ -1223,50 +1225,217 @@ function activateOne() {
   bestS.active = true; bestS.sn = null; bestS.cool = rand(0.1, 0.5);
   return bestS;
 }
+
+// ---------- アプリ（Android）とのつなぎ ----------
+// Capacitor で動いているときだけネイティブ機能を使う。Web 版では Capacitor がないので何もしない
+const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const plugin = (name) => (NATIVE && window.Capacitor.Plugins ? window.Capacitor.Plugins[name] : null);
+if (NATIVE) document.body.classList.add('native');
+const Ads = window.Ads || { available: false, canReward: false, showing: false, initDone: Promise.resolve(), setBanner() {}, showInterstitial: async () => {}, showRewarded: async () => 'unavailable', showPrivacyOptions: async () => {} };
+// 広告の表示中や裏に回ったときに音を止める（ads.js からも呼ばれる）
+window.Sound = {
+  suspend() { if (AC && AC.state === 'running') AC.suspend(); },
+  resume() { if (AC && AC.state === 'suspended' && !document.hidden) AC.resume(); },
+};
+
+// ---------- 画面 ----------
+// title（タイトル）/ howto（あそびかた）/ play（プレイ中）/ pause（ひと休み）/ cont（コンティニューの案内）/ over（結果）
+let screen = 'title';
+let paused = false;          // プレイ中の時間を止めているか（ひと休み・コンティニューの案内）
+let contUsed = 0;            // このゲームで広告を見て続けた回数
+const CONT_MAX = 1;
+const OVERLAYS = { title: 'title', howto: 'howto', pause: 'pause', cont: 'cont', over: 'over' };
+const $ = (id) => document.getElementById(id);
+function setScreen(name) {
+  screen = name;
+  document.body.dataset.screen = name;
+  for (const [key, id] of Object.entries(OVERLAYS)) $(id).classList.toggle('hidden', key !== name);
+  if (name === 'title') updateBestLine();
+  // バナーはタイトル・あそびかた・ひと休み・結果画面だけ（プレイ中はタップの邪魔になるので出さない）
+  Ads.setBanner(name === 'title' || name === 'howto' || name === 'pause' || name === 'over');
+}
+function updateBestLine() { $('bestLine').textContent = best > 0 ? T('bestLine', best.toLocaleString()) : ''; }
+
+// 全画面広告: プレイを始める・タイトルに戻る・ひと休みから再開する・もう一度遊ぶ、のたびに出す
+let adBusy = false;
+async function withInterstitial(next) {
+  if (adBusy) return;
+  if (Ads.available) {
+    adBusy = true;
+    await Ads.showInterstitial(3000);
+    adBusy = false;
+  }
+  next();
+}
+
 function startGame() {
   initAudio();
   mode = 'play';
-  score = 0; combo = 0; lives = 3; elapsed = 0; bestCombo = 0; overTimer = -1;
+  paused = false;
+  score = 0; combo = 0; lives = 3; elapsed = 0; bestCombo = 0; overTimer = -1; contUsed = 0;
   sparks.length = 0; pops.length = 0;
   clearSlots();
   firstSenko = true;
   activateOne();
-  titleEl.classList.add('hidden'); overEl.classList.add('hidden');
-  document.body.classList.add('playing');
+  setScreen('play');
+}
+function playFromMenu() { initAudio(); Ads.setBanner(false); withInterstitial(startGame); }
+function goTitle() {
+  withInterstitial(() => {
+    mode = 'title'; paused = false; overTimer = -1;
+    setScreen('title');
+  });
+}
+function pauseGame() {
+  if (screen !== 'play') return;
+  paused = true;
+  setScreen('pause');
+}
+function resumeGame() {
+  if (screen !== 'pause') return;
+  Ads.setBanner(false);  // 広告のあとはすぐプレイに戻るので、バナーは出し直さない
+  withInterstitial(() => { paused = false; setScreen('play'); });
 }
 function gameOver() {
+  closeContinue();
   mode = 'over';
+  paused = false;
   const isBest = score > best;
   if (isBest) { best = score; try { localStorage.setItem('senko-best', String(best)); } catch (e) {} }
-  document.getElementById('finalScore').textContent = score.toLocaleString();
-  document.getElementById('bestScore').textContent = best.toLocaleString();
-  document.getElementById('newBest').textContent = isBest && score > 0 ? T('newBest') : (bestCombo >= 3 ? T('maxCombo', bestCombo) : '');
-  overEl.classList.remove('hidden');
-  document.body.classList.remove('playing');
+  $('finalScore').textContent = score.toLocaleString();
+  $('bestScore').textContent = best.toLocaleString();
+  $('newBest').textContent = isBest && score > 0 ? T('newBest') : (bestCombo >= 3 ? T('maxCombo', bestCombo) : '');
+  $('contUsed').textContent = contUsed ? T('contUsed', contUsed) : '';
+  $('shareMsg').textContent = '';
+  setScreen('over');
   sfxOver();
 }
-document.getElementById('startBtn').addEventListener('click', startGame);
-document.getElementById('retryBtn').addEventListener('click', startGame);
-const muteBtn = document.getElementById('mute');
+
+// ---------- リワード広告: 最後の命を落としたら、広告を見て命を 1 つ戻して続けられる（アプリのみ・1 ゲーム 1 回） ----------
+const CONT_WAIT = 7;         // 何もしなければこの秒数で結果画面へ
+const cont = { t: 0, busy: false, timer: null };
+function lastLifeLost() {
+  if (Ads.canReward && contUsed < CONT_MAX) offerContinue();
+  else gameOver();
+}
+function offerContinue() {
+  paused = true;
+  Object.assign(cont, { t: CONT_WAIT, busy: false });
+  $('contNote').textContent = T('contNote');
+  $('contWatch').disabled = false;
+  $('contWatch').textContent = T('contWatch');
+  $('contSkip').textContent = T('contSkip', CONT_WAIT);
+  setScreen('cont');
+  clearInterval(cont.timer);
+  cont.timer = setInterval(() => {
+    if (cont.busy || document.hidden) return;
+    cont.t -= 0.25;
+    $('contSkip').textContent = T('contSkip', Math.max(0, Math.ceil(cont.t)));
+    if (cont.t <= 0) gameOver();
+  }, 250);
+}
+function closeContinue() { clearInterval(cont.timer); cont.timer = null; }
+$('contSkip').addEventListener('click', () => { if (screen === 'cont' && !cont.busy) gameOver(); });
+$('contWatch').addEventListener('click', async () => {
+  if (screen !== 'cont' || cont.busy) return;
+  cont.busy = true;
+  $('contWatch').disabled = true;
+  $('contWatch').textContent = T('contLoading');
+  const result = await Ads.showRewarded();
+  if (screen !== 'cont') return;
+  if (result === 'unavailable') {
+    $('contNote').textContent = T('contFail');
+    setTimeout(() => { if (screen === 'cont') gameOver(); }, 1800);
+    return;
+  }
+  if (result !== 'rewarded') { gameOver(); return; }
+  // 最後まで見たときだけ、命を 1 つ戻して続ける
+  closeContinue();
+  contUsed++;
+  lives = 1; overTimer = -1; combo = 0;
+  paused = false;
+  setScreen('play');
+});
+
+// ---------- シェア ----------
+const STORE_URL = 'https://play.google.com/store/apps/details?id=jp.techgym.senko';
+function shareUrl() { return NATIVE ? STORE_URL : location.href.split(/[?#]/)[0]; }
+$('shareBtn').addEventListener('click', async () => {
+  const text = T('shareText', score.toLocaleString(), bestCombo, contUsed);
+  const url = shareUrl();
+  const nativeShare = plugin('Share');
+  try {
+    if (nativeShare) { await nativeShare.share({ title: T('shareTitle'), text, url, dialogTitle: T('shareDialog') }); return; }
+    if (navigator.share) { await navigator.share({ title: T('shareTitle'), text, url }); return; }
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    $('shareMsg').textContent = T('copied');
+  } catch (e) { /* キャンセルされたときは何もしない */ }
+});
+
+// ---------- ボタン ----------
+$('startBtn').addEventListener('click', playFromMenu);
+$('howBtn').addEventListener('click', () => setScreen('howto'));
+$('howPlay').addEventListener('click', playFromMenu);
+$('howBack').addEventListener('click', goTitle);
+$('retryBtn').addEventListener('click', playFromMenu);
+$('overTitleBtn').addEventListener('click', goTitle);
+$('pauseBtn').addEventListener('click', pauseGame);
+$('resumeBtn').addEventListener('click', resumeGame);
+$('pauseTitleBtn').addEventListener('click', goTitle);
+const muteBtn = $('mute');
 muteBtn.addEventListener('click', () => {
   muted = !muted;
   muteBtn.textContent = muted ? '×' : '♪';
   if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, AC.currentTime, 0.05);
 });
 
+// Android の戻るボタン: プレイ中はひと休み（ひと休み中なら再開）、タイトル・結果画面ではアプリを閉じる
+if (plugin('App')) {
+  plugin('App').addListener('backButton', () => {
+    if (adBusy || Ads.showing) return;
+    if (screen === 'title' || screen === 'over') plugin('App').exitApp();
+    else if (screen === 'howto') goTitle();
+    else if (screen === 'play') pauseGame();
+    else if (screen === 'pause') resumeGame();
+    else if (screen === 'cont' && !cont.busy) gameOver();
+  });
+}
+// 別のアプリに切り替えたら、ひと休みにして音を止める（広告の表示中は広告側が音を止めている）
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (screen === 'play') pauseGame();
+    window.Sound.suspend();
+  } else if (!Ads.showing) {
+    window.Sound.resume();
+  }
+});
+
+// タイトル画面の下に、バージョン（アプリ版）・プライバシーポリシー・広告の設定（EU など）を出す
+if (window.APP_VERSION && window.APP_VERSION !== 'dev') $('buildInfo').textContent = window.APP_VERSION + ' |';
+Ads.initDone.then(() => { if (Ads.privacyOptionsRequired) $('adPrivacy').hidden = false; });
+$('adPrivacyLink').addEventListener('click', (e) => { e.preventDefault(); Ads.showPrivacyOptions(); });
+window.addEventListener('senko-lang', () => { if (screen === 'title') updateBestLine(); });
+setScreen('title');
+
 // ============================================================
 // ループ
 // ============================================================
 const camBase = new THREE.Vector3();
 let lastT = performance.now();
+let testHold = false;  // 自動テストで時間を止めるため（Web 版だけで使う）
 let coilSmokeAcc = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
-  if (!window.__senkoPaused) { update(dt); render(); }
+  if (!testHold) { update(dt); render(); }
   requestAnimationFrame(frame);
 }
 function update(dt) {
+  // ひと休み・コンティニューの案内中は時間を止める（画面はそのまま描く）
+  if (paused) {
+    if (AC && sizzleGain) sizzleGain.gain.setTargetAtTime(0, AC.currentTime, 0.05);
+    return;
+  }
   time += dt;
   clickBudget = 3;
 
@@ -1303,7 +1472,7 @@ function update(dt) {
   }
 
   for (const arr of [pops, ripples]) for (let i = arr.length - 1; i >= 0; i--) { arr[i].l -= dt; if (arr[i].l <= 0) arr.splice(i, 1); }
-  if (overTimer > 0) { overTimer -= dt; if (overTimer <= 0) { overTimer = -1; gameOver(); } }
+  if (overTimer > 0) { overTimer -= dt; if (overTimer <= 0) { overTimer = -1; lastLifeLost(); } }
   shake = Math.max(0, shake - dt);
   redFlash = Math.max(0, redFlash - dt);
 
@@ -1350,7 +1519,7 @@ function drawHud() {
     c.fillText(p.text, p.x, p.y - (p.still ? 0 : easeOut(age) * 34));
   }
   c.shadowBlur = 0; c.globalAlpha = 1;
-  if (!(mode === 'play' || overTimer > 0)) return;
+  if (mode !== 'play') return;
 
   const pad = 18, top = 24;
   // ゲーム中は文字を出さない（命の火玉だけ）
@@ -1375,6 +1544,9 @@ function drawHud() {
 // ============================================================
 window.addEventListener('resize', layout);
 layout();
-// テスト用の小さな窓口
+// web-only:start
+// 自動テスト・撮影用の窓口（アプリ用のビルドでは取り除く）
 window.__senko = { get state() { return { mode, score, lives, combo, sparks: sparks.length, slots: slots.map(s => s.sn && { state: s.sn.state, ph: s.sn.phases[s.sn.pi] && s.sn.phases[s.sn.pi][0], k: s.sn.phases[s.sn.pi] ? s.sn.pt / s.sn.phases[s.sn.pi][1] : 0, ...toScreen(s.sn.pos) }) }; }, tap, startGame, step(sec, noRender) { for (let t = 0; t < sec; t += 1 / 60) update(1 / 60); if (!noRender) render(); } };
+Object.defineProperty(window, '__senkoPaused', { set(v) { testHold = !!v; } });
+// web-only:end
 requestAnimationFrame(t => { lastT = t; requestAnimationFrame(frame); });
