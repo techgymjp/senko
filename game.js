@@ -366,7 +366,7 @@ const slots = [];
 const ZJ = [0, -0.16, -0.06, -0.22, -0.1, -0.28];
 const ZJ_PORTRAIT = [0, -0.14, -0.05, -0.19, -0.09];  // 縦長：前後に少しずらして重なりを避ける
 let sparkZ = -0.2, portrait = false;
-let VIS = 1, SPK = 1;  // 縦画面では火玉と火花を大きく見せる（見た目の倍率）
+let VIS = 1, SPK = 1, HEADK = 0.16;  // 縦画面では火玉と火花を大きく見せる（見た目の倍率、火花の先の明るさ）
 const _v = new THREE.Vector3();
 
 function rayAt(ndcX, ndcY, z) {  // 視錐台と平面 z の交点
@@ -426,7 +426,8 @@ function layout() {
   }
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
-  VIS = portrait ? 1.9 : 1; SPK = portrait ? 1.25 : 1;
+  VIS = portrait ? 1.9 : 1; SPK = portrait ? 1.25 : 1; HEADK = portrait ? 0.3 : 0.16;
+  sparkHeads.material.size = portrait ? 0.034 : 0.022;  // 縦画面では火花の線が細く見えるので、先の光を大きく
 
   const halfW = Math.abs(rayAt(1, 0, sparkZ).x);
   const n = portrait ? clamp(Math.floor(W / 76), 4, 5) : clamp(Math.min(Math.floor(W / 105), Math.floor(halfW * 2 * 0.82 / 0.26)), 3, 6);
@@ -816,7 +817,7 @@ function writeSparks() {
     lCol[o + 3] = r; lCol[o + 4] = g; lCol[o + 5] = b;
     const h = i * 3;
     hPos[h] = p.x; hPos[h + 1] = p.y; hPos[h + 2] = p.z;
-    hCol[h] = r * 0.16; hCol[h + 1] = g * 0.16; hCol[h + 2] = b * 0.16;
+    hCol[h] = r * HEADK; hCol[h + 1] = g * HEADK; hCol[h + 2] = b * HEADK;
   }
   lineGeo.setDrawRange(0, n * 2);
   headGeo.setDrawRange(0, n);
