@@ -9,6 +9,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeOut = t => 1 - Math.pow(1 - t, 3);
+const T = (k, ...a) => window.SENKO_T(k, ...a);
 const FONT = "'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif";
 
 // ============================================================
@@ -1125,9 +1126,9 @@ class Senko {
   caught() {
     const f = clamp((this.y0 - this.pos.y) / Math.max(0.01, this.y0), 0, 1);
     let rank, label, pts, col;
-    if (f < 0.3)       { rank = 0; label = '極';   pts = 300; col = '#fff1b8'; }
-    else if (f < 0.62) { rank = 1; label = '見事'; pts = 200; col = '#ffd27a'; }
-    else               { rank = 2; label = 'よし'; pts = 100; col = '#ffab6b'; }
+    if (f < 0.3)       { rank = 0; label = T('r0'); pts = 300; col = '#fff1b8'; }
+    else if (f < 0.62) { rank = 1; label = T('r1'); pts = 200; col = '#ffd27a'; }
+    else               { rank = 2; label = T('r2'); pts = 100; col = '#ffab6b'; }
     combo++; bestCombo = Math.max(bestCombo, combo);
     const mult = 1 + Math.min(combo - 1, 10) * 0.1;
     const gain = Math.round(pts * mult);
@@ -1142,7 +1143,7 @@ class Senko {
     const s = toScreen(this.pos);
     pops.push({ x: s.x, y: s.y - 34, text: label, size: rank === 0 ? 46 : 36, color: col, l: 1.2, m: 1.2 });
     pops.push({ x: s.x, y: s.y + 10, text: '+' + gain, size: 17, color: '#f4e6c8', l: 1.0, m: 1.0 });
-    if (combo >= 2) pops.push({ x: s.x, y: s.y - 72, text: combo + ' 連', size: 18, color: '#ffcf8a', l: 1.1, m: 1.1 });
+    if (combo >= 2) pops.push({ x: s.x, y: s.y - 72, text: T('combo', combo), size: 18, color: '#ffcf8a', l: 1.1, m: 1.1 });
     sfxCatch(rank, combo);
     if (combo % 10 === 0 && lives < 3) {
       lives++;
@@ -1227,7 +1228,7 @@ function gameOver() {
   if (isBest) { best = score; try { localStorage.setItem('senko-best', String(best)); } catch (e) {} }
   document.getElementById('finalScore').textContent = score.toLocaleString();
   document.getElementById('bestScore').textContent = best.toLocaleString();
-  document.getElementById('newBest').textContent = isBest && score > 0 ? '― 自己最高 ―' : (bestCombo >= 3 ? `最大 ${bestCombo} 連` : '');
+  document.getElementById('newBest').textContent = isBest && score > 0 ? T('newBest') : (bestCombo >= 3 ? T('maxCombo', bestCombo) : '');
   overEl.classList.remove('hidden');
   sfxOver();
 }
@@ -1347,10 +1348,10 @@ function drawHud() {
   c.fillText(st, pad, top + 4);
   const sw = c.measureText(st).width;
   c.font = `400 14px ${FONT}`; c.fillStyle = 'rgba(244,230,200,0.6)';
-  c.fillText('点', pad + sw + 6, top + 8);
+  c.fillText(T('pts'), pad + sw + 6, top + 8);
   if (combo >= 2) {
     c.font = `700 16px ${FONT}`; c.fillStyle = '#ffcf8a';
-    c.fillText(combo + ' 連', pad, top + 34);
+    c.fillText(T('combo', combo), pad, top + 34);
   }
   c.shadowBlur = 0;
   for (let i = 0; i < 3; i++) {

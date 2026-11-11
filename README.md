@@ -23,3 +23,12 @@
 - Three.js（`vendor/` に同梱、r160）＋ブルーム。ビルド不要の静的サイトです。
 - 効果音（ぱちぱち、ぽたっ、じゅっ、風鈴、虫の声）と、遠くから聞こえる祭り囃子の BGM（大太鼓・締太鼓・鉦・篠笛）は、すべて Web Audio で合成しています。
 - ローカルで動かす: `python3 -m http.server` を実行して http://localhost:8000/ を開く（ES モジュールのため file:// では動きません）。
+
+## English
+
+**Senko Hanabi** — a 3D Japanese sparkler game on a summer-night veranda.
+
+- The sparkler goes through its real stages: ignition → *botan* (peony) → *matsuba* (pine needles) → *yanagi* (willow) → *chirigiku* (falling chrysanthemum), and finally the glowing bead **drops**.
+- Tap the falling bead in mid-air before it hits the ground. The sooner you catch it, the higher the score (Perfect 300 / Great 200 / Good 100). Streaks raise a multiplier.
+- More sparklers keep appearing and burn faster over time. Drop three beads and the game is over.
+- The language follows your browser setting; use the button at the bottom-left to switch between English and Japanese (or add `?lang=en` / `?lang=ja` to the URL).

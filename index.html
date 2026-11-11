@@ -64,6 +64,16 @@
     width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(244,230,200,.25);
     background: rgba(5,6,13,.4); color: var(--ink-dim); font-size: 16px; cursor: pointer; font-family: inherit;
   }
+  #lang {
+    position: fixed; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom)); z-index: 3;
+    height: 40px; min-width: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(244,230,200,.25);
+    background: rgba(5,6,13,.4); color: var(--ink-dim); font-size: 13px; cursor: pointer; font-family: inherit; letter-spacing: .08em;
+  }
+  .caption { margin: -8px 0 0; font-size: 12px; letter-spacing: .16em; color: var(--ink-dim); text-transform: uppercase; }
+  .caption:empty { display: none; }
+  html[lang="en"] h2 { letter-spacing: .12em; padding-left: .12em; }
+  html[lang="en"] button.main { letter-spacing: .14em; padding-left: calc(34px + .14em); }
+  html[lang="en"] .sub { letter-spacing: .02em; line-height: 1.8; }
   #err { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; padding: 16px; text-align: center; z-index: 5; }
 </style>
 <script type="importmap">
@@ -81,24 +91,84 @@
 
 <div id="title" class="ov">
   <h1>線香花火</h1>
-  <p class="sub">夏の夜、縁側にて。<br>火玉が <em>ぽたり</em> と落ちたら<br>地面につく前に 空中でタップ</p>
-  <button class="main" id="startBtn">火をつける</button>
-  <p class="note">音が出ます。落ちてすぐ取るほど高得点。<br>燃えている玉を早まって触ると連続が途切れます。</p>
+  <p class="caption" data-i18n="caption"></p>
+  <p class="sub" data-i18n="sub">夏の夜、縁側にて。<br>火玉が <em>ぽたり</em> と落ちたら<br>地面につく前に 空中でタップ</p>
+  <button class="main" id="startBtn" data-i18n="start">火をつける</button>
+  <p class="note" data-i18n="note">音が出ます。落ちてすぐ取るほど高得点。<br>燃えている玉を早まって触ると連続が途切れます。</p>
 </div>
 
 <div id="over" class="ov hidden">
-  <h2>おしまい</h2>
+  <h2 data-i18n="over">おしまい</h2>
   <div class="result">
-    <div><small>得点</small><b id="finalScore">0</b></div>
-    <div class="best"><small>最高</small><b id="bestScore">0</b></div>
+    <div><small data-i18n="score">得点</small><b id="finalScore">0</b></div>
+    <div class="best"><small data-i18n="best">最高</small><b id="bestScore">0</b></div>
   </div>
   <p id="newBest"></p>
-  <button class="main" id="retryBtn">もう一度</button>
+  <button class="main" id="retryBtn" data-i18n="retry">もう一度</button>
 </div>
 
 <button id="mute" aria-label="音のオン・オフ">♪</button>
-<div id="err">このブラウザでは 3D 表示（WebGL）が使えないようです。</div>
+<button id="lang" aria-label="Language">EN</button>
+<div id="err" data-i18n="err">このブラウザでは 3D 表示（WebGL）が使えないようです。</div>
 
+<script>
+(() => {
+  const STR = {
+    ja: {
+      title: '線香花火',
+      desc: '縁側で楽しむ線香花火ゲーム。火玉がぽたりと落ちた瞬間、空中でタップ。',
+      caption: '',
+      sub: '夏の夜、縁側にて。<br>火玉が <em>ぽたり</em> と落ちたら<br>地面につく前に 空中でタップ',
+      start: '火をつける',
+      note: '音が出ます。落ちてすぐ取るほど高得点。<br>燃えている玉を早まって触ると連続が途切れます。',
+      over: 'おしまい', score: '得点', best: '最高', retry: 'もう一度',
+      err: 'このブラウザでは 3D 表示（WebGL）が使えないようです。',
+      mute: '音のオン・オフ', toggle: 'EN', toggleLabel: 'Switch to English',
+      newBest: '― 自己最高 ―', maxCombo: n => `最大 ${n} 連`,
+      r0: '極', r1: '見事', r2: 'よし', combo: n => `${n} 連`, pts: '点',
+    },
+    en: {
+      title: 'Senko Hanabi — Japanese Sparkler',
+      desc: 'A Japanese sparkler game on a summer-night veranda. Tap the glowing bead the moment it drops.',
+      caption: 'Senko Hanabi · Japanese sparkler',
+      sub: 'A summer night on the veranda.<br>When the glowing bead <em>drops</em>,<br>tap it in mid-air before it hits the ground.',
+      start: 'Light it',
+      note: 'Sound on. The sooner you catch it, the higher the score.<br>Touching a bead that is still burning breaks your streak.',
+      over: 'Burnt out', score: 'Score', best: 'Best', retry: 'Play again',
+      err: '3D graphics (WebGL) are not available in this browser.',
+      mute: 'Sound on/off', toggle: '日本語', toggleLabel: '日本語に切り替え',
+      newBest: '— New best —', maxCombo: n => `Best streak: ${n}`,
+      r0: 'Perfect', r1: 'Great', r2: 'Good', combo: n => `${n} combo`, pts: 'pts',
+    },
+  };
+  let lang = 'ja';
+  try {
+    const q = new URLSearchParams(location.search).get('lang');
+    const saved = localStorage.getItem('senko-lang');
+    if (q === 'ja' || q === 'en') lang = q;
+    else if (saved === 'ja' || saved === 'en') lang = saved;
+    else lang = (navigator.languages || [navigator.language || '']).some(l => /^ja/i.test(l)) ? 'ja' : 'en';
+  } catch (e) {}
+  const t = (k, ...a) => { const v = STR[lang][k]; return typeof v === 'function' ? v(...a) : v; };
+  function apply() {
+    document.documentElement.lang = lang;
+    document.title = t('title');
+    document.querySelector('meta[name="description"]').content = t('desc');
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = t(el.dataset.i18n); });
+    document.getElementById('mute').setAttribute('aria-label', t('mute'));
+    const b = document.getElementById('lang');
+    b.textContent = t('toggle'); b.setAttribute('aria-label', t('toggleLabel'));
+    window.dispatchEvent(new Event('senko-lang'));
+  }
+  window.SENKO_T = t;
+  document.getElementById('lang').addEventListener('click', () => {
+    lang = lang === 'ja' ? 'en' : 'ja';
+    try { localStorage.setItem('senko-lang', lang); } catch (e) {}
+    apply();
+  });
+  apply();
+})();
+</script>
 <script type="module" src="./game.js"></script>
 </body>
 </html>
