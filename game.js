@@ -36,7 +36,7 @@ const camera = new THREE.PerspectiveCamera(42, 1, 0.02, 120);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 1.1, 0.6, 0.6);
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.35, 0.8);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -57,9 +57,12 @@ function canvasTex(w, h, draw, opt = {}) {
 const glowTex = canvasTex(128, 128, (c, w) => {
   c.fillStyle = '#000'; c.fillRect(0, 0, w, w);
   const g = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
-  g.addColorStop(0, 'rgb(255,255,255)');
-  g.addColorStop(0.15, 'rgb(150,150,150)');
-  g.addColorStop(0.4, 'rgb(30,30,30)');
+  // ガウス状に減衰させ、四角の端より手前で完全に 0 にする（四角く見えないように）
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20, r = t * 0.8;
+    const v = t >= 1 ? 0 : Math.round(255 * Math.exp(-r * r * 9) * (1 - t * t));
+    g.addColorStop(r, `rgb(${v},${v},${v})`);
+  }
   g.addColorStop(1, 'rgb(0,0,0)');
   c.fillStyle = g; c.fillRect(0, 0, w, w);
 }, { srgb: false });
@@ -726,7 +729,7 @@ const PAL = [
 const KIND = {
   bud:     { sp: [0.08, 0.24], life: [0.08, 0.2],  tr: 0.04,  g: 0.3 },
   // 牡丹：太く大きく広がり、枝の先も大きく開く
-  botan:   { sp: [0.6, 1.3],   life: [0.2, 0.42],  tr: 0.05,  g: 0.6, br: 1, bp: 0.9, cm: 1.6, cl: 1.7, k: 1.15 },
+  botan:   { sp: [0.6, 1.3],   life: [0.2, 0.42],  tr: 0.05,  g: 0.6, br: 1, bp: 0.9, cm: 1.6, cl: 1.7, k: 0.95 },
   // 松葉：細く長い線が勢いよく、二段に枝分かれ
   matsuba: { sp: [0.9, 1.9],   life: [0.12, 0.3],  tr: 0.07,  g: 0.3, br: 2, bp: 0.92, cm: 0.85, cl: 0.8, k: 0.85 },
   yanagi:  { sp: [0.35, 0.8],  life: [0.45, 0.95], tr: 0.08,  g: 1.6 },
@@ -747,6 +750,7 @@ function spawn(kind, x, y, z, opt) {
   const k = KIND[kind];
   randDir(_d);
   if (opt && opt.up) { _d.y = Math.abs(_d.y) * 1.5 + 0.4; }
+  if (opt && opt.r) { x += _d.x * opt.r; y += _d.y * opt.r; z += _d.z * opt.r; }
   const sp = rand(k.sp[0], k.sp[1]) * ((opt && opt.spMul) || 1);
   const life = rand(k.life[0], k.life[1]);
   let br = 0;
@@ -788,7 +792,7 @@ function writeSparks() {
     const f = p.l / p.m;
     const pal = PAL[p.p];
     const hot = pal[0], cool = pal[1];
-    const I = (0.3 + 1.5 * f * f) * Math.min(1, f * 2.2) * p.k;
+    const I = (0.3 + 1.5 * f * f) * Math.min(1, f * 2.2) * p.k * Math.min(1, 0.25 + (p.m - p.l) * 25);
     const r = lerp(cool[0], hot[0], f) * I, g = lerp(cool[1], hot[1], f) * I, b = lerp(cool[2], hot[2], f) * I;
     const o = i * 6;
     lPos[o] = p.x - p.vx * p.tr; lPos[o + 1] = p.y - p.vy * p.tr; lPos[o + 2] = p.z - p.vz * p.tr;
@@ -935,7 +939,7 @@ class Senko {
     this.wick = new THREE.Mesh(cylGeo, wickMat);
     this.beadMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.2, 0.35), transparent: true });
     this.bead = new THREE.Mesh(beadGeo, this.beadMat);
-    this.glowMat = new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(1.6, 0.55, 0.15), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false });
+    this.glowMat = new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(2.0, 0.75, 0.22), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false });
     this.glow = new THREE.Sprite(this.glowMat);
     this.flameMat = new THREE.SpriteMaterial({ map: flameTex, color: new THREE.Color(1.3, 1.0, 0.8), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false });
     this.flame = new THREE.Sprite(this.flameMat);
@@ -956,8 +960,7 @@ class Senko {
     this.acc[kind] = (this.acc[kind] || 0) + rate * dt;
     while (this.acc[kind] >= 1) {
       this.acc[kind] -= 1;
-      const r = this.r * 0.7;
-      spawn(kind, this.pos.x + rand(-r, r), this.pos.y + rand(-r, r), this.pos.z + rand(-r, r), opt);
+      spawn(kind, this.pos.x, this.pos.y, this.pos.z, Object.assign({ r: this.r * 1.05 }, opt));
     }
   }
   // 各段階の火花の出方。k は段階内の進み具合 (0〜1)
@@ -1019,7 +1022,7 @@ class Senko {
         if (this.burstT <= 0) {
           this.burstT = rand(0.14, 0.32) / mix.burst;
           const n = 9 + Math.floor(Math.random() * 8);
-          for (let i = 0; i < n; i++) spawn('botan', this.pos.x, this.pos.y, this.pos.z);
+          for (let i = 0; i < n; i++) spawn('botan', this.pos.x, this.pos.y, this.pos.z, { r: this.r * 1.05 });
           if (clickBudget > 0) { clickBudget--; sfxClick(rand(0.06, 0.12) * (mode === 'play' ? 1 : 0.6)); }
         }
       }
@@ -1090,11 +1093,11 @@ class Senko {
       const heat = 0.7 + this.int * 0.6;
       // 散り菊では火玉が冷めて赤く暗くなっていく
       const cool = this.state === 'burn' && this.phases[this.pi] && this.phases[this.pi][0] === 'chiri' ? clamp(this.pt / this.phases[this.pi][1], 0, 1) : 0;
-      this.beadMat.color.setRGB(3.2 * heat * fl * (1 - 0.3 * cool), 1.15 * heat * fl * (1 - 0.55 * cool), 0.32 * heat * (1 - 0.6 * cool));
+      this.beadMat.color.setRGB(2.1 * heat * fl * (1 - 0.3 * cool), 0.85 * heat * fl * (1 - 0.55 * cool), 0.25 * heat * (1 - 0.6 * cool));
       this.glow.position.copy(this.pos);
-      const gs = 0.07 + this.int * 0.15;
+      const gs = 0.09 + this.int * 0.18;
       this.glow.scale.set(gs, gs, 1);
-      this.glowMat.opacity = 0.55 + 0.45 * fl;
+      this.glowMat.opacity = (0.55 + 0.45 * fl) * 1.0;
       this.light.position.copy(this.pos);
       this.light.intensity = (0.25 + this.int * 1.7) * fl;
     } else if (!igniting) {
@@ -1125,10 +1128,10 @@ class Senko {
   }
   caught() {
     const f = clamp((this.y0 - this.pos.y) / Math.max(0.01, this.y0), 0, 1);
-    let rank, label, pts, col;
-    if (f < 0.3)       { rank = 0; label = T('r0'); pts = 300; col = '#fff1b8'; }
-    else if (f < 0.62) { rank = 1; label = T('r1'); pts = 200; col = '#ffd27a'; }
-    else               { rank = 2; label = T('r2'); pts = 100; col = '#ffab6b'; }
+    let rank, pts;
+    if (f < 0.3)       { rank = 0; pts = 300; }
+    else if (f < 0.62) { rank = 1; pts = 200; }
+    else               { rank = 2; pts = 100; }
     combo++; bestCombo = Math.max(bestCombo, combo);
     const mult = 1 + Math.min(combo - 1, 10) * 0.1;
     const gain = Math.round(pts * mult);
@@ -1140,10 +1143,6 @@ class Senko {
     if (rank === 0) addFx('ring', this.pos, { color: new THREE.Color(1.6, 1.3, 0.8), life: 0.85, size: 0.03, grow: 0.55 });
     addFx('flash', this.pos, { color: new THREE.Color(0.9, 0.55, 0.25), life: 0.4, size: rank === 0 ? 0.5 : 0.38 });
     flashLight.position.copy(this.pos); flashI = rank === 0 ? 6 : 4;
-    const s = toScreen(this.pos);
-    pops.push({ x: s.x, y: s.y - 34, text: label, size: rank === 0 ? 46 : 36, color: col, l: 1.2, m: 1.2 });
-    pops.push({ x: s.x, y: s.y + 10, text: '+' + gain, size: 17, color: '#f4e6c8', l: 1.0, m: 1.0 });
-    if (combo >= 2) pops.push({ x: s.x, y: s.y - 72, text: T('combo', combo), size: 18, color: '#ffcf8a', l: 1.1, m: 1.1 });
     sfxCatch(rank, combo);
     if (combo % 10 === 0 && lives < 3) {
       lives++;
@@ -1221,6 +1220,7 @@ function startGame() {
   clearSlots();
   activateOne();
   titleEl.classList.add('hidden'); overEl.classList.add('hidden');
+  document.body.classList.add('playing');
 }
 function gameOver() {
   mode = 'over';
@@ -1230,6 +1230,7 @@ function gameOver() {
   document.getElementById('bestScore').textContent = best.toLocaleString();
   document.getElementById('newBest').textContent = isBest && score > 0 ? T('newBest') : (bestCombo >= 3 ? T('maxCombo', bestCombo) : '');
   overEl.classList.remove('hidden');
+  document.body.classList.remove('playing');
   sfxOver();
 }
 document.getElementById('startBtn').addEventListener('click', startGame);
@@ -1340,20 +1341,7 @@ function drawHud() {
   if (!(mode === 'play' || overTimer > 0)) return;
 
   const pad = 18, top = 24;
-  c.textAlign = 'left';
-  c.shadowColor = 'rgba(255,120,40,0.6)'; c.shadowBlur = 10;
-  c.fillStyle = '#f4e6c8';
-  c.font = `700 26px ${FONT}`;
-  const st = score.toLocaleString();
-  c.fillText(st, pad, top + 4);
-  const sw = c.measureText(st).width;
-  c.font = `400 14px ${FONT}`; c.fillStyle = 'rgba(244,230,200,0.6)';
-  c.fillText(T('pts'), pad + sw + 6, top + 8);
-  if (combo >= 2) {
-    c.font = `700 16px ${FONT}`; c.fillStyle = '#ffcf8a';
-    c.fillText(T('combo', combo), pad, top + 34);
-  }
-  c.shadowBlur = 0;
+  // ゲーム中は文字を出さない（命の火玉だけ）
   for (let i = 0; i < 3; i++) {
     const x = W - pad - 8 - i * 24, y = top + 4;
     if (i < lives) {
