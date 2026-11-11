@@ -344,7 +344,7 @@ let W = 1, H = 1, DPR = 1;
 let maxSlots = 3;
 const slots = [];
 const ZJ = [0, -0.16, -0.06, -0.22, -0.1, -0.28];
-let sparkZ = -0.2;
+let sparkZ = -0.2, portrait = false;
 const _v = new THREE.Vector3();
 
 function rayAt(ndcX, ndcY, z) {  // 視錐台と平面 z の交点
@@ -353,6 +353,12 @@ function rayAt(ndcX, ndcY, z) {  // 視錐台と平面 z の交点
   return { x: camera.position.x + _v.x * t, y: camera.position.y + _v.y * t };
 }
 
+function floorZ(ndcY) {  // 画面の高さ ndcY に見える縁側の床の奥行き
+  _v.set(0, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+  if (_v.y >= -1e-4) return EDGE_Z + 0.3;
+  const t = (FLOOR_Y - camera.position.y) / _v.y;
+  return camera.position.z + _v.z * t;
+}
 function layout() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
@@ -364,30 +370,58 @@ function layout() {
 
   const aspect = W / H;
   camera.aspect = aspect;
-  const k = aspect < 1.25 ? 1 + (1.25 / aspect - 1) * 0.75 : 1;
-  const camY = 1.3 + (k - 1) * 0.5, camZ = 2.75 + (k - 1) * 1.3;
-  camera.position.set(0, camY, camZ);
-  // 落下点が縁側に隠れない奥行きを求める
-  const lim = 0.53;
-  sparkZ = Math.min(-0.15, (camY * EDGE_Z - lim * camZ) / (camY - lim) - 0.08);
-  camera.lookAt(0, 0.42, sparkZ - 0.2);
+  portrait = aspect < 0.9;
+  if (portrait) {
+    // 縦長：横の画角を保ったまま縦に広く見せ、火玉は上・着地点は下・縁側は最下部に少しだけ
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(24)) / aspect));
+    camera.updateProjectionMatrix();
+    sparkZ = -0.35;
+    const camZ = 2.1;
+    const edge = new THREE.Vector3(), land = new THREE.Vector3();
+    let bestE = 1e9, bestY = 1, bestP = -0.3;
+    for (let cy = 0.6; cy <= 2.2; cy += 0.04) {
+      for (let pd = -2; pd >= -50; pd -= 0.5) {
+        camera.position.set(0, cy, camZ);
+        camera.rotation.set(THREE.MathUtils.degToRad(pd), 0, 0);
+        camera.updateMatrixWorld(true);
+        edge.set(0, FLOOR_Y, EDGE_Z).project(camera);
+        land.set(0, 0, sparkZ).project(camera);
+        const e = (edge.y + 0.88) ** 2 + (land.y + 0.72) ** 2;
+        if (e < bestE && land.y > edge.y) { bestE = e; bestY = cy; bestP = pd; }
+      }
+    }
+    camera.position.set(0, bestY, camZ);
+    camera.rotation.set(THREE.MathUtils.degToRad(bestP), 0, 0);
+  } else {
+    camera.fov = 42;
+    const k = aspect < 1.25 ? 1 + (1.25 / aspect - 1) * 0.75 : 1;
+    const camY = 1.3 + (k - 1) * 0.5, camZ = 2.75 + (k - 1) * 1.3;
+    camera.position.set(0, camY, camZ);
+    // 落下点が縁側に隠れない奥行きを求める
+    const lim = 0.53;
+    sparkZ = Math.min(-0.15, (camY * EDGE_Z - lim * camZ) / (camY - lim) - 0.08);
+    camera.lookAt(0, 0.42, sparkZ - 0.2);
+  }
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
 
   const halfW = Math.abs(rayAt(1, 0, sparkZ).x);
   const n = clamp(Math.min(Math.floor(W / 105), Math.floor(halfW * 2 * 0.82 / 0.26)), 3, 6);
   maxSlots = n;
-  while (slots.length < n) slots.push({ i: slots.length, active: false, sn: null, cool: 0, x: 0, z: 0, top: 1.4 });
+  while (slots.length < n) slots.push({ i: slots.length, active: false, sn: null, cool: 0, x: 0, z: 0, top: 1.4, yLo: 0.7, yHi: 0.9 });
   for (let i = slots.length - 1; i >= n; i--) { if (slots[i].sn) slots[i].sn.dispose(); slots.pop(); }
   for (const s of slots) {
     s.z = sparkZ + ZJ[s.i];
     const hw = Math.abs(rayAt(1, 0, s.z).x);
     s.x = lerp(-hw * 0.8, hw * 0.8, (s.i + 0.5) / n);
     s.top = rayAt(0, 1, s.z).y;
+    // 火玉の高さの範囲（縦長では画面の上の方に）
+    if (portrait) { s.yLo = rayAt(0, 0.5, s.z).y; s.yHi = rayAt(0, 0.74, s.z).y; }
+    else { s.yLo = s.top * 0.5; s.yHi = s.top * 0.66; }
   }
 
   // 小道具の位置
-  const fz = EDGE_Z + 0.22;
+  const fz = portrait ? EDGE_Z + Math.max(0.07, (floorZ(-0.98) - EDGE_Z) * 0.5) : EDGE_Z + 0.22;
   const fhw = Math.abs(rayAt(1, -0.85, fz).x);
   coil.position.set(-Math.min(fhw * 0.62, 1.2), FLOOR_Y, fz);
   bucket.position.set(Math.min(Math.abs(rayAt(1, 0, 0.05).x) * 0.78, 1.4), 0, 0.05);
@@ -773,7 +807,7 @@ function placeSegment(mesh, a, b, r) {
 class Senko {
   constructor(slot) {
     this.slot = slot;
-    this.beadFrac = rand(0.5, 0.66);
+    this.beadFrac = Math.random();
     const m = durMul();
     this.phases = [
       ['tsubomi', rand(1.0, 1.6) * m],
@@ -819,7 +853,7 @@ class Senko {
   update(dt) {
     this.t += dt;
     const A = this.anchor(_a);
-    const fullLen = A.y - this.slot.top * this.beadFrac;
+    const fullLen = A.y - lerp(this.slot.yLo, this.slot.yHi, this.beadFrac);
     const ax = this.swA * Math.sin(this.t * this.swW + this.swP) + 0.008 * Math.sin(this.t * 2.7);
     const az = this.swA * 0.6 * Math.sin(this.t * this.swW * 0.83 + this.swP * 1.7);
     let L = fullLen;
