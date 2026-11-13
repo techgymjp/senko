@@ -1,6 +1,6 @@
 // Web ファイルを www/ にコピーする
 //   npm run build     … Web 版(GitHub Pages)用。そのままコピーする
-//   npm run build:app … Android アプリ用(APP_BUILD=1)。Web 版だけの部分(テスト用の window.__senko など)を取り除く
+//   npm run build:app … Android アプリ用(APP_BUILD=1)。Web 版だけの部分(Google Play へのリンク、テスト用の window.__senko など)を取り除く
 // Web 版だけの部分は目印で囲む: HTML は <!-- web-only --> … <!-- /web-only -->、
 // JS は // web-only:start … // web-only:end
 // (アプリの中に画面に出ない機能を残すと、ストアの審査で「審査中に機能を隠している」と判断されることがあるため)
@@ -23,7 +23,7 @@ if (APP) {
     '.js': /[ \t]*\/\/ web-only:start[\s\S]*?\/\/ web-only:end[ \t]*\n?/g,
   };
   // 取り除き忘れがあればビルドを止める
-  const banned = [/__senko/, /web-only/, /github\.io/i];
+  const banned = [/__senko/, /web-only/, /github\.io/i, /play\.google\.com/i, /Google Play/i, /storeLink/];
   const problems = [];
   for (const name of fs.readdirSync(out)) {
     const file = path.join(out, name), re = strip[path.extname(name)];

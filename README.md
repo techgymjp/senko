@@ -29,6 +29,8 @@
 [Capacitor](https://capacitorjs.com/) でゲームのファイルをアプリに同梱し、Android アプリにしています（オフラインで遊べます）。
 構成は techgymjp/jet-fighter の `docs/ANDROID_PORTING.md`、techgymjp/jackal と同じです。
 
+**Google Play:** https://play.google.com/store/apps/details?id=jp.techgym.senko （Web 版のタイトル画面にもリンクを出している。アプリ用のビルドでは `<!-- web-only -->` の範囲ごと取り除く）
+
 **動作確認用の APK（テスト広告）**
 
 - リリース画面: https://github.com/techgymjp/senko/releases/tag/android-latest
