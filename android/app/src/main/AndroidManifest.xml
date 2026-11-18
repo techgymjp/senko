@@ -36,4 +36,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 縦画面に固定しているが、縦画面に対応した端末だけに配信先を絞らないよう「必須ではない」と明示する -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
 </manifest>
