@@ -13,7 +13,7 @@ window.Ads = (() => {
       },
       // 本番の広告ユニット(AdMob の Android アプリ「線香花火」)
       production: {
-        interstitial: 'ca-app-pub-6411535997477460/7799005406',
+        interstitial: 'ca-app-pub-6411535997477460/8713301677',
         rewarded: 'ca-app-pub-6411535997477460/3779869346',
         banner: 'ca-app-pub-6411535997477460/5368953035',
       },
